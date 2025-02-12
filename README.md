@@ -6,17 +6,21 @@ It uses excellent [pikepdf](https://github.com/pikepdf/pikepdf) library to handl
 ## Installation
 TODO: publish to pypi
 
-After you have built the package, it is recommended to install it using [pipx](https://github.com/pypa/pipx):
+You can install a release using [pipx](https://github.com/pypa/pipx):
+
+If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.0.1` in the command below.
 
 ```bash
-pipx install dist/pdfbind-0.1.0-py3-none-any.whl
-```
+pipx install https://github.com/SashaOv/pdfbind/releases/download/0.0.1/pdfbind-py3-none-any.whl
+
 
 Of course, you can also install it using standard pip:
 
 ```bash
-pip install dist/pdfbind-0.1.0-py3-none-any.whl
+pip install https://github.com/SashaOv/pdfbind/releases/download/0.0.1/pdfbind-py3-none-any.whl
 ```
+
+
 
 
 ## Buildling
