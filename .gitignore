@@ -1,7 +1,7 @@
 # Python
 __pycache__/
 # Poetry
-/poetry.lock
+/uv.lock
 /dist/
 .venv/
 # VSCode

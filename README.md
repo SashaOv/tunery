@@ -6,33 +6,32 @@ It uses excellent [pikepdf](https://github.com/pikepdf/pikepdf) library to handl
 ## Installation
 TODO: publish to pypi
 
-You can install a release using [pipx](https://github.com/pypa/pipx):
+This project uses [uv](https://github.com/astral-sh/uv) and [hatchling](https://github.com/pypa/hatch) for dependency management and packaging:
 
-If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.0.1` in the command below.
+
+If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.1.1` in the command below.
 
 ```bash
-pipx install https://github.com/SashaOv/pdfbind/releases/download/0.0.1/pdfbind-py3-none-any.whl
-
+uv pip install https://github.com/SashaOv/pdfbind/releases/download/0.1.1/pdfbind-py3-none-any.whl
+```
 
 Of course, you can also install it using standard pip:
 
 ```bash
-pip install https://github.com/SashaOv/pdfbind/releases/download/0.0.1/pdfbind-py3-none-any.whl
+pip install https://github.com/SashaOv/pdfbind/releases/download/0.1.1/pdfbind-py3-none-any.whl
 ```
 
+## Building
 
-
-
-## Buildling
-
-This is a standard Poetry project, so all the usual commands apply:
 
 ```bash
-poetry install
+# Install development dependencies
+uv pip install -e .
 ```
 
 ```bash
-poetry build
+# Build the package
+python -m build
 ```
 
 ## How to use
@@ -55,9 +54,8 @@ pdfbind favorites.yaml
 
 This command will create `favorites.pdf` in the same directory as the layout file.
 
-
 ## License
 
-Licensed under the Apache License, Version 2.0 (the "License"). See the [LICENSE](LICENSE) file for more details.
+Licensed under the Apache License, Version 2.0 (the "License").
 
 Copyright [2024] Sasha Ovsankin

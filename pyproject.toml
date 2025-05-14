@@ -1,21 +1,24 @@
-[tool.poetry]
+[project]
 name = "pdfbind"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
-authors = ["Sasha Ovsankin <sasha@ovsankin.com>"]
 readme = "README.md"
-license = "Apache-2.0"
+license = "Apache-2.0" 
+authors = [
+    { name = "Sasha Ovsankin", email = "sasha@ovsankin.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pikepdf>=9.2.1",
+    "pyyaml>=6.0.2"
+]
 
-
-[tool.poetry.dependencies]
-python = "^3.12"
-pikepdf = "^9.2.1"
-pyyaml = "^6.0.2"
-
+[project.scripts]
+pdfbind = "pdfbind.main:main"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.scripts]
-pdfbind = "pdfbind.main:main"
+[tool.hatch.build.targets.wheel]
+packages = ["pdfbind"]
