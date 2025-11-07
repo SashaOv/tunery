@@ -10,11 +10,20 @@ authors = [
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pikepdf>=9.2.1",
-    "pyyaml>=6.0.2"
+    "pyyaml>=6.0.2",
+    "pdfplumber>=0.11.0",
+    "pytesseract>=0.3.13",
+    "pdf2image>=1.17.0",
+    "pillow>=10.0.0"
 ]
 
 [project.scripts]
 pdfbind = "pdfbind.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -22,3 +31,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pdfbind"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"

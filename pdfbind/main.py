@@ -44,11 +44,10 @@ def bind_pdf(layout: Path, output: Path):
     combined_pdf.close()
 
 
-
 def main(args: Sequence[str] | None = None):
-    args = parse_args(args)
-    input_path = Path(args.layout)
-    output_path = Path(args.output) if args.output else input_path.with_name(f"{input_path.stem}.pdf")  
+    parsed = parse_args(args)
+    input_path = Path(parsed.layout)
+    output_path = Path(parsed.output) if parsed.output else input_path.with_name(f"{input_path.stem}.pdf")  
     bind_pdf(input_path, output_path)
 
 

@@ -8,6 +8,30 @@ TODO: publish to pypi
 
 This project uses [uv](https://github.com/astral-sh/uv) and [hatchling](https://github.com/pypa/hatch) for dependency management and packaging:
 
+### System Dependencies
+
+For OCR functionality (indexing scanned PDFs), you'll need to install system dependencies:
+
+**macOS:**
+```bash
+brew install poppler tesseract
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install poppler-utils tesseract-ocr
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install poppler-utils tesseract
+```
+
+**Windows:**
+- Download Poppler from: https://github.com/oschwartz10612/poppler-windows/releases
+- Download Tesseract from: https://github.com/UB-Mannheim/tesseract/wiki
+- Add both to your system PATH
+
 
 If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.1.1` in the command below.
 
