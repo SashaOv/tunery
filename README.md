@@ -32,6 +32,15 @@ sudo dnf install poppler-utils tesseract
 - Download Tesseract from: https://github.com/UB-Mannheim/tesseract/wiki
 - Add both to your system PATH
 
+### Handwritten / Real Book charts
+
+Some scanned Real Book volumes use a hand-lettered font that Tesseract struggles to read.  
+`pdfbind` now ships with automatic handwriting fallbacks:
+
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) is tried first and handles most Real Book glyphs. The first run downloads ~300 MB of models/wheels.
+- If PaddleOCR cannot read a page, we fall back to EasyOCR (~80 MB download) with aggressive spell-repair tuned for jazz titles.
+
+Expect the first indexing run on a new machine to be slower while these models download, but subsequent runs are cached locally.
 
 If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.1.1` in the command below.
 

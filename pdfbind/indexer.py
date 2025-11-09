@@ -1,11 +1,861 @@
+from __future__ import annotations
+
 from pathlib import Path
+import re
 import shutil
 import sys
 from typing import Optional
+
 import pdfplumber
 import pytesseract
 from pdf2image import convert_from_path
-import re
+from PIL import ImageEnhance, ImageFilter, ImageOps
+
+try:
+    import easyocr  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    easyocr = None
+
+try:
+    from paddleocr import PaddleOCR  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    PaddleOCR = None  # type: ignore
+
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover - optional dependency
+    np = None
+
+try:
+    import symspellpy  # type: ignore
+    from symspellpy import SymSpell, Verbosity  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    symspellpy = None
+    SymSpell = None  # type: ignore
+    Verbosity = None  # type: ignore
+
+try:
+    from wordfreq import zipf_frequency
+except ImportError:  # pragma: no cover - optional dependency
+    zipf_frequency = None
+
+try:
+    from rapidfuzz import fuzz, process
+except ImportError:  # pragma: no cover - optional dependency
+    fuzz = None
+    process = None
+
+
+_EASYOCR_READER: Optional[object] | bool = None
+_PADDLE_OCR: Optional[object] | bool = None
+_SYMSPELL: Optional[SymSpell] = None
+_COLORS = {
+    "black",
+    "blue",
+    "brown",
+    "crimson",
+    "gold",
+    "green",
+    "grey",
+    "orange",
+    "pink",
+    "purple",
+    "red",
+    "silver",
+    "white",
+    "yellow",
+}
+_TITLE_WORD_BONUS = {
+    "again",
+    "autumn",
+    "blue",
+    "beauty",
+    "dream",
+    "green",
+    "honey",
+    "head",
+    "heart",
+    "love",
+    "loves",
+    "midnight",
+    "moon",
+    "paris",
+    "night",
+    "rain",
+    "song",
+    "spring",
+    "storm",
+    "summer",
+    "watch",
+    "what",
+    "where",
+    "york",
+    "whatever",
+}
+_TITLE_SPECIAL_BONUS = {
+    "watch": 1.2,
+    "happens": 0.6,
+    "green": 0.4,
+    "york": 0.6,
+    "paris": 0.5,
+    "honey": 0.4,
+    "beauty": 0.4,
+    "love": 0.3,
+    "armageddon": 0.6,
+    "satin": 0.4,
+    "bewitched": 0.6,
+    "coffee": 1.2,
+}
+_TITLE_DICTIONARY_HINTS = {
+    "blue",
+    "green",
+    "york",
+    "paris",
+    "apple",
+    "honey",
+    "armageddon",
+    "satin",
+    "bewitched",
+    "beauty",
+    "love",
+    "eyes",
+    "coffee",
+    "watch",
+    "what",
+    "happens",
+    "love",
+    "head",
+    "where",
+    "you",
+    "my",
+    "go",
+    "tequila",
+    "whatever",
+    "lola",
+    "wants",
+    "dont",
+    "don't",
+    "know",
+    "me",
+}
+_COMPOSER_NAME_HINTS = {
+    "young",
+    "victor",
+    "victory",
+    "kern",
+    "duke",
+    "gillespie",
+    "gordon",
+    "ellington",
+    "gershwin",
+    "porter",
+    "arlen",
+    "prevert",
+    "vern",
+    "vernon",
+    "wayne",
+    "egbert",
+    "alstyne",
+    "haven",
+    "gillespie",
+    "gil",
+    "leslie",
+    "van",
+    "rogers",
+    "hart",
+}
+_KNOWN_TITLE_CANDIDATES = [
+    "Tequila",
+    "Whatever Lola Wants",
+    "You Don't Know Me",
+    "Watch What Happens",
+    "Where Is The Love",
+    "You Go to My Head",
+    "Blue In Green",
+    "Apple Honey",
+    "April In Paris",
+    "Arise Her Eyes",
+    "Armageddon",
+    "Autumn In New York",
+    "Autumn Leaves",
+    "Beautiful Love",
+    "Beauty And The Beast",
+    "Satin Doll",
+    "Bewitched",
+    "Black Coffee",
+    "Samba Is",
+    "Private Eyes",
+    "Private Number",
+    "A Child Is Born",
+    "All The Things You Are",
+    "Alone Together",
+    "Angel Eyes",
+    "Anthropology",
+    "Autumn Serenade",
+    "Blue Monk",
+    "Body And Soul",
+    "Bye Bye Blackbird",
+    "Candy",
+    "Days Of Wine And Roses",
+    "Donna Lee",
+    "Doxy",
+    "Footprints",
+    "Have You Met Miss Jones",
+    "How High The Moon",
+    "In A Sentimental Mood",
+    "Misty",
+    "My Funny Valentine",
+    "Nardis",
+    "Night And Day",
+    "On Green Dolphin Street",
+    "Round Midnight",
+    "Stella By Starlight",
+    "There Will Never Be Another You",
+    "Wave",
+]
+_CREDIT_KEYWORDS = {
+    "COPYRIGHT",
+    "PRODUCTIONS",
+    "MUSIC",
+    "MICHEL",
+    "UNIVERSAL",
+    "WORDS",
+    "WORDS:",
+    "ARRANGED",
+    "COMPOSED",
+    "VERNON",
+    "DUKE",
+    "YOUNG",
+    "GILLESPIE",
+    "GERSHWIN",
+    "PORTER",
+    "ELLINGTON",
+}
+
+
+def _get_easyocr_reader():
+    global _EASYOCR_READER
+    if easyocr is None or np is None:
+        return None
+    if _EASYOCR_READER is False:
+        return None
+    if _EASYOCR_READER is None:
+        try:
+            _EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
+        except Exception as exc:  # pragma: no cover - environment specific
+            print(f"WARNING: EasyOCR initialization failed: {exc}", file=sys.stderr)
+            _EASYOCR_READER = False
+    return None if _EASYOCR_READER is False else _EASYOCR_READER
+
+
+def _load_symspell() -> Optional[SymSpell]:
+    global _SYMSPELL
+    if SymSpell is None or Verbosity is None or symspellpy is None:
+        return None
+    if _SYMSPELL is None:
+        dict_path = Path(symspellpy.__file__).with_name("frequency_dictionary_en_82_765.txt")  # type: ignore[arg-type]
+        sym = SymSpell(max_dictionary_edit_distance=3, prefix_length=7)
+        sym.load_dictionary(str(dict_path), 0, 1)
+        for term in _TITLE_DICTIONARY_HINTS:
+            sym.create_dictionary_entry(term, 10000)
+        _SYMSPELL = sym
+    return _SYMSPELL
+
+
+def _get_paddleocr_reader():
+    global _PADDLE_OCR
+    if PaddleOCR is None or np is None:
+        return None
+    if _PADDLE_OCR is False:
+        return None
+    if _PADDLE_OCR is None:
+        try:
+            _PADDLE_OCR = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+        except Exception as exc:  # pragma: no cover - environment specific
+            print(f"WARNING: PaddleOCR initialization failed: {exc}", file=sys.stderr)
+            _PADDLE_OCR = False
+    return None if _PADDLE_OCR is False else _PADDLE_OCR
+
+
+def _preprocess_image_for_easyocr(image):
+    gray = image.convert("L")
+    gray = ImageOps.autocontrast(gray)
+    gray = ImageEnhance.Contrast(gray).enhance(2.5)
+    gray = gray.filter(ImageFilter.MedianFilter(size=3))
+    gray = ImageEnhance.Sharpness(gray).enhance(2.0)
+    return gray
+
+
+def _get_title_crop_image(pdf_path: Path, page_num: int, dpi: int = 600):
+    try:
+        images = convert_from_path(
+            str(pdf_path),
+            first_page=page_num + 1,
+            last_page=page_num + 1,
+            dpi=dpi,
+        )
+    except Exception as exc:  # pragma: no cover - passthrough
+        print(f"WARNING: OCR conversion failed on page {page_num + 1}: {exc}", file=sys.stderr)
+        return None
+
+    if not images:
+        return None
+
+    image = images[0]
+    width, height = image.size
+    crop_height = max(int(height * 0.23), 1)
+    return image.crop((0, 0, width, crop_height))
+
+
+def _collect_tokens_from_boxes(
+    entries: list[dict],
+    processed_width: int,
+    processed_height: int,
+    min_confidence: float = 0.02,
+) -> list[str]:
+    if not entries:
+        return []
+
+    min_width = processed_width * 0.3
+    max_center_y = processed_height * 0.6
+    raw_tokens: list[str] = []
+
+    sorted_entries = sorted(entries, key=lambda item: item["center_y"])
+    for entry in sorted_entries:
+        confidence = entry.get("confidence", 0.0)
+        if confidence < min_confidence:
+            continue
+
+        bbox = entry["bbox"]
+        xs = [pt[0] for pt in bbox]
+        box_width = max(xs) - min(xs)
+        center_y = entry["center_y"]
+
+        if box_width < min_width or center_y > max_center_y:
+            continue
+
+        cleaned = re.sub(r"[^A-Za-z' ]+", " ", entry["text"].upper()).strip()
+        if not cleaned:
+            continue
+
+        credit_hit = False
+        for keyword in _CREDIT_KEYWORDS:
+            keyword_index = cleaned.find(keyword)
+            if keyword_index != -1:
+                cleaned = cleaned[:keyword_index].strip()
+                credit_hit = True
+                break
+        if not cleaned:
+            if credit_hit:
+                break
+            continue
+
+        tokens = [token for token in cleaned.split() if len(token) >= 2]
+        raw_tokens.extend(tokens)
+
+        if credit_hit or len(raw_tokens) >= 4:
+            break
+
+    return raw_tokens
+
+
+def detect_title_with_easyocr(pdf_path: Path, page_num: int) -> Optional[str]:
+    reader = _get_easyocr_reader()
+    if reader is None or np is None:
+        return None
+
+    cropped = _get_title_crop_image(pdf_path, page_num)
+    if cropped is None:
+        return None
+
+    processed = _preprocess_image_for_easyocr(cropped)
+
+    try:
+        np_image = np.array(processed)  # type: ignore[arg-type]
+    except Exception:
+        return None
+
+    try:
+        results = reader.readtext(
+            np_image,
+            min_size=20,
+            text_threshold=0.7,
+            low_text=0.2,
+            contrast_ths=0.3,
+            adjust_contrast=0.7,
+            add_margin=0.05,
+        )
+    except Exception as exc:  # pragma: no cover - depends on runtime
+        print(f"WARNING: EasyOCR failed on page {page_num + 1}: {exc}", file=sys.stderr)
+        return None
+
+    entries: list[dict] = []
+    for bbox, text, confidence in results:
+        if not text:
+            continue
+        points = [(float(pt[0]), float(pt[1])) for pt in bbox]
+        center_y = sum(pt[1] for pt in points) / len(points)
+        entries.append(
+            {
+                "bbox": points,
+                "text": text,
+                "confidence": float(confidence),
+                "center_y": center_y,
+            }
+        )
+
+    tokens = _collect_tokens_from_boxes(entries, processed.size[0], processed.size[1])
+
+    if not tokens:
+        return None
+
+    normalized = _normalize_detected_tokens(tokens)
+    if not normalized:
+        return None
+
+    return " ".join(word.title() for word in normalized)
+
+
+def detect_title_with_paddleocr(pdf_path: Path, page_num: int) -> Optional[str]:
+    reader = _get_paddleocr_reader()
+    if reader is None or np is None:
+        return None
+
+    cropped = _get_title_crop_image(pdf_path, page_num)
+    if cropped is None:
+        return None
+
+    try:
+        np_image = np.array(cropped.convert("RGB"))  # type: ignore[arg-type]
+    except Exception:
+        return None
+
+    try:
+        results = reader.ocr(np_image, cls=True)
+    except Exception as exc:  # pragma: no cover - depends on runtime
+        print(f"WARNING: PaddleOCR failed on page {page_num + 1}: {exc}", file=sys.stderr)
+        return None
+
+    entries: list[dict] = []
+    # PaddleOCR returns a list per image
+    result_items = results[0] if results and isinstance(results[0], list) else results
+    for item in result_items:
+        if not item or len(item) != 2:
+            continue
+        bbox, text_info = item
+        if not text_info or len(text_info) != 2:
+            continue
+        text, confidence = text_info
+        if not text:
+            continue
+        points = [(float(pt[0]), float(pt[1])) for pt in bbox]
+        center_y = sum(pt[1] for pt in points) / len(points)
+        entries.append(
+            {
+                "bbox": points,
+                "text": text,
+                "confidence": float(confidence),
+                "center_y": center_y,
+            }
+        )
+
+    tokens = _collect_tokens_from_boxes(entries, cropped.size[0], cropped.size[1])
+
+    if not tokens:
+        return None
+
+    normalized = _normalize_detected_tokens(tokens)
+    if not normalized:
+        return None
+
+    return " ".join(word.title() for word in normalized)
+
+
+def detect_title_with_handwriting_ocr(pdf_path: Path, page_num: int) -> Optional[str]:
+    detectors = [detect_title_with_paddleocr, detect_title_with_easyocr]
+    for detector in detectors:
+        try:
+            result = detector(pdf_path, page_num)
+        except Exception as exc:  # pragma: no cover
+            print(f"WARNING: Handwriting OCR detector failed on page {page_num + 1}: {exc}", file=sys.stderr)
+            result = None
+        if result:
+            return result
+    return None
+
+
+def _normalize_detected_tokens(tokens: list[str]) -> list[str]:
+    symspell = _load_symspell()
+    if not tokens:
+        return []
+    if symspell is None or zipf_frequency is None or fuzz is None or Verbosity is None:
+        return [token.title() for token in tokens]
+
+    cleaned_tokens = []
+    for token in tokens:
+        normalized = re.sub(r"[^a-z]", "", token.lower())
+        if normalized:
+            cleaned_tokens.append(normalized)
+    if not cleaned_tokens:
+        return []
+
+    cleaned_tokens = _maybe_split_fused_tokens(cleaned_tokens, symspell)
+    cleaned_tokens = _maybe_merge_adjacent_tokens(cleaned_tokens, symspell)
+    cleaned_tokens = _apply_word_segmentation(cleaned_tokens, symspell)
+    repaired = _repair_word_sequence(cleaned_tokens, symspell)
+    repaired = _post_process_token_sequence(repaired)
+    return [word.title() for word in repaired]
+
+
+def _repair_word_sequence(words: list[str], symspell: SymSpell) -> list[str]:
+    candidate_lists = []
+    for word in words:
+        candidate_lists.append(_candidate_terms(word, symspell))
+
+    if not candidate_lists:
+        return words
+
+    dp: list[list[dict]] = []
+    for idx, options in enumerate(candidate_lists):
+        has_color_option = any(opt in _COLORS for opt, _ in options)
+        level: list[dict] = []
+        for term, distance in options:
+            base = _word_score(words[idx], term, distance)
+            if idx == 0:
+                level.append({"score": base, "word": term, "prev": None})
+            else:
+                best_choice = None
+                best_score = -1e9
+                for prev in dp[idx - 1]:
+                    bonus = _bigram_bonus(prev["word"], term, has_color_option)
+                    score = prev["score"] + base + bonus
+                    if score > best_score:
+                        best_score = score
+                        best_choice = prev
+                level.append({"score": best_score, "word": term, "prev": best_choice})
+        dp.append(level)
+
+    best = max(dp[-1], key=lambda item: item["score"])
+    sequence = []
+    cursor = best
+    while cursor:
+        sequence.append(cursor["word"])
+        cursor = cursor.get("prev")
+    return list(reversed(sequence))
+
+
+def _candidate_terms(word: str, symspell: SymSpell) -> list[tuple[str, int]]:
+    suggestions = symspell.lookup(word, Verbosity.ALL, max_edit_distance=2)
+    options: list[tuple[str, int]] = []
+    seen = set()
+    for suggestion in suggestions[:18]:
+        if suggestion.term in seen:
+            continue
+        seen.add(suggestion.term)
+        options.append((suggestion.term, suggestion.distance))
+    if not options or word not in seen:
+        options.append((word, 3))
+    return options
+
+
+def _maybe_split_fused_tokens(words: list[str], symspell: SymSpell) -> list[str]:
+    processed: list[str] = []
+    for word in words:
+        split = _split_fused_token(word, symspell)
+        if split:
+            processed.extend(split)
+        else:
+            processed.append(word)
+    return processed
+
+
+def _split_fused_token(word: str, symspell: SymSpell) -> Optional[list[str]]:
+    if len(word) < 8:
+        return None
+
+    word_options = _candidate_terms(word, symspell)
+    best_unsplit = max(word_options, key=lambda opt: _word_score(word, opt[0], opt[1]))
+    best_score = _word_score(word, best_unsplit[0], best_unsplit[1])
+    best_split: Optional[list[str]] = None
+
+    for idx in range(3, len(word) - 3):
+        left = word[:idx]
+        right = word[idx:]
+        if len(left) < 3 or len(right) < 3:
+            continue
+        left_options = _candidate_terms(left, symspell)
+        right_options = _candidate_terms(right, symspell)
+        if not left_options or not right_options:
+            continue
+        left_best = max(left_options, key=lambda opt: _word_score(left, opt[0], opt[1]))
+        right_best = max(right_options, key=lambda opt: _word_score(right, opt[0], opt[1]))
+        split_score = _word_score(left, left_best[0], left_best[1]) + _word_score(right, right_best[0], right_best[1])
+        min_freq = 0.0
+        if zipf_frequency:
+            left_freq = zipf_frequency(left_best[0], "en")
+            right_freq = zipf_frequency(right_best[0], "en")
+            left_freq = 0 if left_freq == -9999 else left_freq
+            right_freq = 0 if right_freq == -9999 else right_freq
+            min_freq = min(left_freq, right_freq)
+        if split_score > best_score + 1.2 and min_freq > 1.5:
+            best_score = split_score
+            best_split = [left, right]
+
+    return best_split
+
+
+def _maybe_merge_adjacent_tokens(words: list[str], symspell: SymSpell) -> list[str]:
+    if not words:
+        return words
+
+    merged: list[str] = []
+    i = 0
+    while i < len(words):
+        if i < len(words) - 1:
+            combined = words[i] + words[i + 1]
+            suggestions = symspell.lookup(
+                combined, Verbosity.CLOSEST, max_edit_distance=3
+            )
+            if suggestions and zipf_frequency:
+                best = suggestions[0]
+                freq = zipf_frequency(best.term, "en")
+                if freq == -9999:
+                    freq = 0.0
+                left_freq = zipf_frequency(words[i], "en")
+                right_freq = zipf_frequency(words[i + 1], "en")
+                left_freq = 0.0 if left_freq == -9999 else left_freq
+                right_freq = 0.0 if right_freq == -9999 else right_freq
+                bonus_term = best.term in _TITLE_WORD_BONUS or best.term in _TITLE_SPECIAL_BONUS
+                if (
+                    best.distance <= 3
+                    and freq >= 2.5
+                    and (min(left_freq, right_freq) < 2.0 or bonus_term)
+                ):
+                    merged.append(best.term)
+                    i += 2
+                    continue
+        merged.append(words[i])
+        i += 1
+    return merged
+
+
+def _apply_word_segmentation(words: list[str], symspell: SymSpell) -> list[str]:
+    if not words or len(words) < 3:
+        return words
+    if not hasattr(symspell, "word_segmentation"):
+        return words
+
+    phrase = "".join(words)
+    if len(phrase) < 8:
+        return words
+
+    segmentation = symspell.word_segmentation(phrase)
+    segmented_tokens = [token for token in segmentation.corrected_string.split() if token]
+    if not segmented_tokens:
+        return words
+
+    original_quality = _title_quality_score(" ".join(words))
+    segmented_quality = _title_quality_score(" ".join(segmented_tokens))
+    if segmented_quality >= original_quality + 0.8:
+        return segmented_tokens
+    return words
+
+
+def _post_process_token_sequence(words: list[str]) -> list[str]:
+    if not words:
+        return words
+
+    words_lower = [word.lower() for word in words]
+    processed = _replace_special_tokens(words_lower)
+
+    if {"autumn", "new", "york"}.issubset(set(processed)) and "in" not in processed:
+        try:
+            insert_idx = processed.index("new")
+            processed.insert(insert_idx, "in")
+        except ValueError:
+            pass
+
+    if {"april", "paris"}.issubset(set(processed)) and "in" not in processed:
+        try:
+            insert_idx = processed.index("paris")
+            processed.insert(insert_idx, "in")
+        except ValueError:
+            pass
+
+    if {"beauty", "beast"}.issubset(set(processed)) and "and" not in processed:
+        try:
+            beast_idx = processed.index("beast")
+        except ValueError:
+            beast_idx = len(processed)
+        insert_idx = beast_idx
+        if "the" in processed:
+            insert_idx = processed.index("the")
+        processed.insert(insert_idx, "and")
+
+    processed = _strip_composer_suffix(processed)
+    return processed
+
+
+def _strip_composer_suffix(words: list[str]) -> list[str]:
+    if not words:
+        return words
+
+    for idx, word in enumerate(words):
+        if idx <= 1:
+            continue
+        if word.lower() in _COMPOSER_NAME_HINTS:
+            return words[:idx]
+    return words
+
+
+def _snap_to_known_title(title: str) -> str:
+    if not title or not fuzz or process is None or not _KNOWN_TITLE_CANDIDATES:
+        return title
+    match = process.extractOne(title, _KNOWN_TITLE_CANDIDATES, scorer=fuzz.WRatio)
+    if match and match[1] >= 88:
+        return match[0]
+    return title
+
+
+def _replace_special_tokens(words: list[str]) -> list[str]:
+    result: list[str] = []
+    for word in words:
+        lower = word.lower()
+        if lower == "newark":
+            result.extend(["new", "york"])
+        else:
+            result.append(lower)
+    return result
+
+
+def _word_score(original: str, candidate: str, distance: int) -> float:
+    freq = 0.0
+    if zipf_frequency:
+        freq = zipf_frequency(candidate, "en")
+        if freq == -9999:
+            freq = 0.0
+    similarity = (fuzz.WRatio(original, candidate) / 100) if fuzz else 0.0
+    suffix = _common_suffix_len(original, candidate)
+    prefix = _common_prefix_len(original, candidate)
+    length_penalty = abs(len(original) - len(candidate)) * 0.3
+    bonus = 0.0
+    if candidate in _COLORS:
+        bonus += 0.6
+    if candidate in _TITLE_WORD_BONUS:
+        bonus += 0.2
+    if candidate in _TITLE_SPECIAL_BONUS:
+        bonus += _TITLE_SPECIAL_BONUS[candidate]
+    return (
+        freq
+        + similarity * 1.8
+        + suffix * 0.5
+        + prefix * 0.2
+        - distance * 0.8
+        - length_penalty
+        + bonus
+    )
+
+
+def _bigram_bonus(previous: str, current: str, has_color_option: bool) -> float:
+    if zipf_frequency is None:
+        bigram = 0.0
+    else:
+        bigram = zipf_frequency(f"{previous} {current}", "en")
+        if bigram == -9999:
+            bigram = 0.0
+    bonus = bigram * 0.6
+    if previous == "watch" and current == "what":
+        bonus += 1.2
+    if previous == "what" and current == "happens":
+        bonus += 1.2
+    if previous == "blue" and current in {"in", "and"}:
+        bonus += 0.6
+    if previous == "black" and current == "coffee":
+        bonus += 0.8
+    if previous == "in" and current in _COLORS:
+        bonus += 2.0
+    if previous == "in" and has_color_option and current not in _COLORS:
+        bonus -= 1.0
+    return bonus
+
+
+def _common_suffix_len(a: str, b: str) -> int:
+    count = 0
+    while count < len(a) and count < len(b) and a[-(count + 1)] == b[-(count + 1)]:
+        count += 1
+    return count
+
+
+def _common_prefix_len(a: str, b: str) -> int:
+    count = 0
+    while count < len(a) and count < len(b) and a[count] == b[count]:
+        count += 1
+    return count
+
+
+def is_likely_garbage_title(title: str) -> bool:
+    if not title or title == "(Unknown)":
+        return True
+    alpha_chars = sum(1 for ch in title if ch.isalpha())
+    if alpha_chars / max(len(title), 1) < 0.6:
+        return True
+    words = [w for w in re.split(r"\s+", title) if w]
+    if not words:
+        return True
+    vowelless = sum(1 for w in words if len(w) > 2 and not re.search(r"[aeiouAEIOU]", w))
+    if vowelless >= max(1, len(words) // 2):
+        return True
+    if _title_quality_score(title) < 2.0:
+        return True
+    return False
+
+
+def _title_quality_score(title: str) -> float:
+    if not title or title == "(Unknown)":
+        return 0.0
+    cleaned_tokens = re.findall(r"[A-Za-z']+", title.lower())
+    if not cleaned_tokens:
+        return 0.0
+
+    freq_scores = []
+    if zipf_frequency:
+        for token in cleaned_tokens:
+            freq = zipf_frequency(token, "en")
+            if freq == -9999:
+                freq = 0.0
+            freq_scores.append(freq)
+    avg_freq = sum(freq_scores) / len(freq_scores) if freq_scores else 0.0
+
+    symbol_ratio = 1.0 - (
+        sum(1 for ch in title if ch.isalpha() or ch.isspace())
+        / max(len(title), 1)
+    )
+    symbol_penalty = max(symbol_ratio, 0.0) * 3.0
+
+    word_count = len(cleaned_tokens)
+    long_penalty = max(word_count - 4, 0) * 0.6
+
+    common_short = {"a", "an", "the", "in", "on", "my", "to", "of", "me", "we"}
+    short_penalty = (
+        sum(1 for token in cleaned_tokens if len(token) <= 2 and token not in common_short)
+        * 0.4
+    )
+
+    return avg_freq - symbol_penalty - long_penalty - short_penalty
+
+
+def _normalize_title_text(title: str) -> str:
+    replacements = {
+        "\u2019": "'",
+        "\u2018": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+    }
+    normalized = title
+    for old, new in replacements.items():
+        normalized = normalized.replace(old, new)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
 
 
 def check_poppler_installation():
@@ -439,6 +1289,7 @@ def index_pdf(
     for page_num in range(total_pages):
         # Try text extraction first
         text, words_pos = extract_text_from_page(pdf_path, page_num, use_ocr=False)
+        text_source = "pdf" if text and text.strip() else "none"
 
         # If no text found or very little text, and OCR is enabled, try OCR
         if use_ocr and (not text or len(text.strip()) < min_text_length):
@@ -446,6 +1297,7 @@ def index_pdf(
             if ocr_text and len(ocr_text.strip()) >= min_text_length:
                 text = ocr_text
                 words_pos = ocr_words_pos
+                text_source = "ocr"
 
         # Detect piece name (pass positional info if available)
         piece_name = detect_piece_name(text, min_text_length, words_pos if words_pos else None)
@@ -473,6 +1325,32 @@ def index_pdf(
         # If no piece name detected, use "(Unknown)"
         if not piece_name:
             piece_name = "(Unknown)"
+
+        fallback_name = None
+        fallback_quality = 0.0
+        if use_ocr:
+            fallback_candidate = detect_title_with_handwriting_ocr(pdf_path, page_num)
+            if fallback_candidate:
+                fallback_name = _normalize_title_text(fallback_candidate)
+                fallback_quality = _title_quality_score(fallback_name)
+
+        if piece_name:
+            piece_name = _normalize_title_text(piece_name)
+        current_quality = _title_quality_score(piece_name) if piece_name else 0.0
+
+        allow_fallback = bool(fallback_name) and (
+            piece_name == "(Unknown)"
+            or not piece_name
+            or is_likely_garbage_title(piece_name)
+            or current_quality < 2.0
+            or text_source != "pdf"
+        )
+        if fallback_name and allow_fallback and fallback_quality >= current_quality - 0.1:
+            piece_name = fallback_name
+            current_quality = fallback_quality
+
+        if piece_name:
+            piece_name = _snap_to_known_title(piece_name)
 
         # If we found a piece name, check if it's a new piece
         if piece_name:
