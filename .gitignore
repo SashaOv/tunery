@@ -1,10 +1,12 @@
+# Mac OS
+.DS_Store
 # Python
 __pycache__/
-# Poetry
+# UV
 /uv.lock
 /dist/
 .venv/
 # VSCode
 .vscode/
 # Custom project
-/work/
+/cache/

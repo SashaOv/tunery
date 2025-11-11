@@ -1,6 +1,6 @@
 [project]
 name = "pdfbind"
-version = "0.1.1"
+version = "0.2.1"
 description = ""
 readme = "README.md"
 license = "Apache-2.0" 
@@ -10,7 +10,8 @@ authors = [
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pikepdf>=9.2.1",
-    "pyyaml>=6.0.2"
+    "pydantic>=2.12.4",
+    "pyyaml>=6.0.2",
 ]
 
 [project.scripts]
