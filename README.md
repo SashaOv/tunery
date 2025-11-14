@@ -9,16 +9,16 @@ TODO: publish to pypi
 This project uses [uv](https://github.com/astral-sh/uv) and [hatchling](https://github.com/pypa/hatch) for dependency management and packaging:
 
 
-If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.1.1` in the command below.
+If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.2.1` in the command below.
 
 ```bash
-uv pip install https://github.com/SashaOv/pdfbind/releases/download/0.1.1/pdfbind-py3-none-any.whl
+uv pip install https://github.com/SashaOv/pdfbind/releases/download/0.2.1/pdfbind-py3-none-any.whl
 ```
 
 Of course, you can also install it using standard pip:
 
 ```bash
-pip install https://github.com/SashaOv/pdfbind/releases/download/0.1.1/pdfbind-py3-none-any.whl
+pip install https://github.com/SashaOv/pdfbind/releases/download/0.2.1/pdfbind-py3-none-any.whl
 ```
 
 ## Building
