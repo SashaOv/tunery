@@ -5,7 +5,7 @@ import pikepdf
 import pytest
 import yaml
 
-from pdfbind.main import bind_pdf, extract_pages_from_pdf
+from tunery.render import render, copy_pages
 
 
 def create_pdf(path: Path, page_count: int) -> Path:
@@ -85,7 +85,7 @@ def test_bind_pdf_combines_sections_and_flat_entries(tmp_path: Path) -> None:
     layout_path = write_layout(layout_dir / "25-11-09.yaml", records)
     output_path = layout_dir / "combined.pdf"
 
-    bind_pdf(layout_path, output_path)
+    render(layout_path, output_path)
 
     with pikepdf.Pdf.open(output_path) as merged:
         assert len(merged.pages) == 9
@@ -143,7 +143,7 @@ def test_bind_pdf_handles_empty_section(tmp_path: Path) -> None:
     layout_path = write_layout(layout_dir / "empty.yaml", records)
     output_path = layout_dir / "empty.pdf"
 
-    bind_pdf(layout_path, output_path)
+    render(layout_path, output_path)
 
     with pikepdf.Pdf.open(output_path) as merged:
         assert len(merged.pages) == 1
@@ -157,12 +157,12 @@ def test_bind_pdf_handles_empty_section(tmp_path: Path) -> None:
             assert outline_page_index(merged, root_items[1]) == 0
 
 
-def test_extract_pages_from_pdf_validates_ranges(tmp_path: Path) -> None:
+def test_copy_pages_validates_ranges(tmp_path: Path) -> None:
     source_pdf = create_pdf(tmp_path / "source.pdf", 2)
     combined_pdf = pikepdf.Pdf.new()
 
     with pytest.raises(ValueError):
-        extract_pages_from_pdf(combined_pdf, str(source_pdf), start_page=3)
+        copy_pages(combined_pdf, str(source_pdf), start_page=3)
 
     with pytest.raises(ValueError):
-        extract_pages_from_pdf(combined_pdf, str(source_pdf), start_page=2, length=3)
+        copy_pages(combined_pdf, str(source_pdf), start_page=2, length=3)

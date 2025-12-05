@@ -1,25 +1,10 @@
-# PDF Bind
+# Tunery
 
-This is a simple script to combine multiple PDFs into a single one and to create outline with each file being a chapter. 
-It uses excellent [pikepdf](https://github.com/pikepdf/pikepdf) library to handle the PDFs.
+A system to manage a database of tunes (charts) easily create set list PDFs.
 
-## Installation
-TODO: publish to pypi
+## Contributing
 
-This project uses [uv](https://github.com/astral-sh/uv) and [hatchling](https://github.com/pypa/hatch) for dependency management and packaging:
-
-
-If needed, check the latest release number at https://github.com/SashaOv/pdfbind/releases/latest and replace `0.2.1` in the command below.
-
-```bash
-uv pip install https://github.com/SashaOv/pdfbind/releases/download/0.2.1/pdfbind-py3-none-any.whl
-```
-
-Of course, you can also install it using standard pip:
-
-```bash
-pip install https://github.com/SashaOv/pdfbind/releases/download/0.2.1/pdfbind-py3-none-any.whl
-```
+Humans and LLMs -- please refer to GUIDLINES.md .
 
 ## Building
 
@@ -29,10 +14,8 @@ pip install https://github.com/SashaOv/pdfbind/releases/download/0.2.1/pdfbind-p
 uv pip install -e .
 ```
 
-```bash
-# Build the package
-python -m build
-```
+TODO
+
 
 ## How to use
 
@@ -49,7 +32,7 @@ For example, `favorites.yaml`:
 ### Run the command
 
 ```bash
-pdfbind favorites.yaml
+tunery render favorites.yaml
 ```
 
 This command will create `favorites.pdf` in the same directory as the layout file.
@@ -58,4 +41,4 @@ This command will create `favorites.pdf` in the same directory as the layout fil
 
 Licensed under the Apache License, Version 2.0 (the "License").
 
-Copyright [2024] Sasha Ovsankin
+Copyright (C) 2024 Sasha Ovsankin

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - We are using UV and pytest
-- The code structure is: `pdfbind/` is the core source, `tests/` is where the test go
+- The code structure is: `tunery/` is the core source, `tests/` is where the test go
 
 ## Coding Style
 - Avoid noise and incorrect behavior. ALWAYS check comments and documentation to be in sync with the code.
