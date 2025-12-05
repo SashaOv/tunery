@@ -5,7 +5,7 @@ from typing import List
 
 import pikepdf
 import yaml
-from pydantic import BaseModel, Field, PositiveInt, RootModel
+from pydantic import BaseModel, Field, PositiveInt, RootModel, ValidationError
 
 from tunery.index import Index
 
@@ -35,35 +35,155 @@ class SectionEntry(BaseModel):
     body: List[FileEntry] = Field(default_factory=list)
 
 
-class Layout(RootModel[List[SectionEntry | FileEntry]]):
-    """The complete layout schema - a list of sections and/or file entries."""
+class ConfigEntry(BaseModel):
+    """Configuration entry specifying override directory."""
+
+    override: str
+
+
+class Layout(RootModel[List[ConfigEntry | SectionEntry | FileEntry]]):
+    """The complete layout schema - a list of config, sections, and/or file entries."""
 
     pass
 
 
+def get_page_label_to_index_map(pdf: pikepdf.Pdf) -> dict[int, int]:
+    """
+    Map page labels (what appears on the page) to physical page indices (0-based).
+    
+    PDFs can have custom page numbering (e.g., "i, ii, iii, 1, 2, 3" or "A-1, A-2").
+    This function creates a mapping from page label numbers to physical page indices.
+    
+    Args:
+        pdf: The PDF to analyze.
+        
+    Returns:
+        Dictionary mapping page label number to physical page index (0-based).
+    """
+    label_to_index: dict[int, int] = {}
+    
+    # Try to get page labels from the PDF
+    try:
+        root = pdf.Root
+        if '/PageLabels' in root:
+            page_labels = root['/PageLabels']
+            if '/Nums' in page_labels:
+                nums = page_labels['/Nums']
+                # Nums is an array of [page_index, label_dict, page_index, label_dict, ...]
+                for i in range(0, len(nums), 2):
+                    start_index_obj = nums[i]
+                    start_index = int(start_index_obj) if hasattr(start_index_obj, '__int__') else 0
+                    
+                    if i + 1 < len(nums):
+                        label_dict = nums[i + 1]
+                        # Get the starting number and style for this label range
+                        start_num = 1
+                        style = None
+                        
+                        # Check if label_dict is actually a dictionary
+                        if isinstance(label_dict, pikepdf.Dictionary):
+                            # Get /St (starting number) if present
+                            if '/St' in label_dict:
+                                st_obj = label_dict['/St']
+                                start_num = int(st_obj) if hasattr(st_obj, '__int__') else 1
+                            
+                            # Get /S (style) - /D = decimal, /a = lowercase alpha, /r = lowercase roman, etc.
+                            if '/S' in label_dict:
+                                style_obj = label_dict['/S']
+                                if isinstance(style_obj, pikepdf.Name):
+                                    style = str(style_obj)
+                                elif isinstance(style_obj, pikepdf.Dictionary):
+                                    # Nested style dict (uncommon)
+                                    if '/St' in style_obj:
+                                        st_obj = style_obj['/St']
+                                        start_num = int(st_obj) if hasattr(st_obj, '__int__') else 1
+                        
+                        # Find where this range ends
+                        if i + 2 < len(nums):
+                            next_start_obj = nums[i + 2]
+                            next_start = int(next_start_obj) if hasattr(next_start_obj, '__int__') else len(pdf.pages)
+                        else:
+                            next_start = len(pdf.pages)
+                        
+                        # Only map numeric labels (/D = decimal, or no /S which defaults to decimal)
+                        # Skip non-numeric styles like /a (alpha), /r (roman), /A (uppercase alpha)
+                        if style is None or style == '/D':
+                            # Map all pages in this range with numeric labels
+                            # If a label number already exists, prefer the longer range (main content)
+                            for page_idx in range(start_index, next_start):
+                                label_num = start_num + (page_idx - start_index)
+                                # Only add if not already mapped, or if this range is longer
+                                range_length = next_start - start_index
+                                if label_num not in label_to_index:
+                                    label_to_index[label_num] = page_idx
+                                else:
+                                    # If already mapped, check if current range is longer
+                                    existing_idx = label_to_index[label_num]
+                                    # Prefer the mapping that's part of a longer range
+                                    # (This handles cases where there are multiple decimal ranges)
+                                    existing_range_length = 0
+                                    for j in range(0, len(nums), 2):
+                                        if j + 1 < len(nums):
+                                            existing_start = int(nums[j])
+                                            existing_next = int(nums[j + 2]) if j + 2 < len(nums) else len(pdf.pages)
+                                            if existing_start <= existing_idx < existing_next:
+                                                existing_range_length = existing_next - existing_start
+                                                break
+                                    if range_length > existing_range_length:
+                                        label_to_index[label_num] = page_idx
+    except (KeyError, AttributeError, TypeError, IndexError, ValueError):
+        # If page labels don't exist or are malformed, assume 1:1 mapping
+        pass
+    
+    # If no labels found, create 1:1 mapping (page 1 = index 0, page 2 = index 1, etc.)
+    if not label_to_index:
+        for i in range(len(pdf.pages)):
+            label_to_index[i + 1] = i
+    
+    return label_to_index
+
+
 def get_page_range(
-    total_pages: int,
+    pdf: pikepdf.Pdf,
     start_page: int | None = None,
     length: int | None = None,
 ) -> tuple[int, int]:
     """
-    Calculate 0-based page range indices from 1-based start_page and length.
+    Calculate 0-based page range indices from page number.
+    
+    First tries to map page labels (what appears on the page) to physical page indices.
+    If the page number doesn't exist as a label, treats it as a 1-based physical page index.
 
     Args:
-        total_pages: Total number of pages in the PDF.
-        start_page: 1-based starting page number (optional).
+        pdf: The PDF to extract pages from.
+        start_page: Page number - either a page label or 1-based physical index.
         length: Number of pages to extract (optional, defaults to 1 if start_page is set).
 
     Returns:
         Tuple of (start_idx, end_idx) for slicing (end_idx is exclusive).
     """
+    total_pages = len(pdf.pages)
+    
     if start_page is not None:
-        start_idx = start_page - 1
-        end_idx = start_page + (length - 1 if length else 0)
+        # Map page label to physical index
+        # The index stores page labels (what appears on the page), not physical indices
+        label_map = get_page_label_to_index_map(pdf)
+        start_idx = label_map.get(start_page)
+        
+        if start_idx is None:
+            # Page label not found - fallback to treating as 1-based physical index
+            # (Some indexes might store physical indices instead of page labels)
+            start_idx = start_page - 1
+        
+        # Calculate end index
+        end_idx = start_idx + (length if length else 1)
+        
         if end_idx > total_pages:
             raise ValueError(
                 f"page {start_page} + length {length or 1} exceeds total pages {total_pages}"
             )
+        if start_idx < 0:
+            raise ValueError(f"page {start_page} is invalid (would be negative index)")
         return start_idx, end_idx
     return 0, total_pages
 
@@ -79,7 +199,7 @@ def copy_pages(
     Returns the number of pages added.
     """
     with pikepdf.Pdf.open(input_pdf_path) as input_pdf:
-        start_idx, end_idx = get_page_range(len(input_pdf.pages), start_page, length)
+        start_idx, end_idx = get_page_range(input_pdf, start_page, length)
         pages_to_add = input_pdf.pages[start_idx:end_idx]
         combined_pdf.pages.extend(pages_to_add)
         return len(pages_to_add)
@@ -363,7 +483,7 @@ def copy_pages_with_notes(
     Returns the number of pages added.
     """
     with pikepdf.Pdf.open(input_pdf_path) as input_pdf:
-        start_idx, end_idx = get_page_range(len(input_pdf.pages), start_page, length)
+        start_idx, end_idx = get_page_range(input_pdf, start_page, length)
 
         for page_idx in range(start_idx, end_idx):
             add_page_with_notes(combined_pdf, input_pdf.pages[page_idx], notes)
@@ -376,7 +496,9 @@ def process_file_entry(
     default_dir: Path,
     combined_pdf: pikepdf.Pdf,
     index: Index | None = None,
-) -> tuple[str, int]:
+    override_dir: Path | None = None,
+    preferred_source: Path | None = None,
+) -> tuple[str, int] | None:
     """
     Add the requested pages for an entry to the combined PDF and return its title and start page index.
 
@@ -384,8 +506,10 @@ def process_file_entry(
     and the notes will be added at the bottom of the page.
 
     If the entry has no 'file' but has a 'title', the file will be looked up in the index.
+    If an override directory is specified and contains <title>.pdf, that file is used instead.
     """
     # Determine the input PDF path and page/length
+    input_pdf_path: Path | None = None
     if entry.file:
         # File is explicitly specified
         input_pdf_path = resolve_path(entry.file, default_dir)
@@ -396,21 +520,75 @@ def process_file_entry(
         # Look up in the index by title
         if not entry.title:
             raise ValueError("Entry must have either 'file' or 'title'")
-        if index is None:
-            raise ValueError(
-                f"Cannot look up '{entry.title}': no index available. "
-                "Run 'tunery index <dir>' first."
-            )
-
-        location = index.lookup(entry.title)
-        if not location:
-            raise ValueError(f"Title '{entry.title}' not found in index")
-
-        input_pdf_path = Path(location.source_path)
+        
         title = entry.title
-        # Use entry's page/length if specified, otherwise use from index
-        page = entry.page if entry.page else location.page
-        length = entry.length if entry.length else location.length
+        
+        # Check override directory first if specified
+        if override_dir and override_dir.exists():
+            override_file = override_dir / f"{title}.pdf"
+            if override_file.exists():
+                # Use override file, skip index lookup
+                input_pdf_path = override_file
+                page = entry.page if entry.page else 1
+                length = entry.length if entry.length else 1
+            else:
+                # No override file found, fall back to index lookup
+                if index is None:
+                    raise ValueError(
+                        f"Cannot look up '{title}': no index available and no override file found. "
+                        "Run 'tunery index <dir>' first."
+                    )
+
+                # Try to find a match in the preferred source first
+                if preferred_source:
+                    all_matches = index.lookup_all(title)
+                    preferred_match = next(
+                        (m for m in all_matches if Path(m.source_path).resolve() == preferred_source.resolve()),
+                        None
+                    )
+                    if preferred_match:
+                        location = preferred_match
+                    else:
+                        location = index.lookup(title)
+                else:
+                    location = index.lookup(title)
+                
+                if not location:
+                    return None
+
+                input_pdf_path = Path(location.source_path)
+                # Use entry's page/length if specified, otherwise use from index
+                page = entry.page if entry.page else location.page
+                length = entry.length if entry.length else location.length
+        else:
+            # No override directory, proceed with index lookup
+            if index is None:
+                raise ValueError(
+                    f"Cannot look up '{title}': no index available. "
+                    "Run 'tunery index <dir>' first."
+                )
+
+            # Try to find a match in the preferred source first
+            if preferred_source:
+                all_matches = index.lookup_all(title)
+                preferred_match = next(
+                    (m for m in all_matches if Path(m.source_path).resolve() == preferred_source.resolve()),
+                    None
+                )
+                if preferred_match:
+                    location = preferred_match
+                else:
+                    location = index.lookup(title)
+            else:
+                location = index.lookup(title)
+            
+            if not location:
+                return None
+
+            input_pdf_path = Path(location.source_path)
+            # Use entry's page/length if specified, otherwise use from index
+            page = entry.page if entry.page else location.page
+            length = entry.length if entry.length else location.length
 
     entry_page = len(combined_pdf.pages)
 
@@ -424,16 +602,47 @@ def process_file_entry(
         # No notes - use the standard bulk extraction
         copy_pages(combined_pdf, str(input_pdf_path), page, length)
 
-    return title, entry_page
+    return title, entry_page, input_pdf_path
 
 
-def render(layout_path: Path, output: Path, index_path: Path | None = None) -> None:
+def render(
+    layout_path: Path,
+    output: Path,
+    index_path: Path | None = None,
+    override_dir: Path | None = None,
+) -> None:
     """Combine PDFs according to the YAML layout file."""
-    with open(str(layout_path), "r") as file:
-        raw_records = yaml.safe_load(file)
+    try:
+        with open(str(layout_path), "r") as file:
+            file_content = file.read()
+            raw_data = yaml.safe_load(file_content)
+    except yaml.YAMLError as e:
+        # Add file path and line information to YAML parsing errors
+        error_msg = f"YAML parsing error in {layout_path}"
+        # Some YAML errors have problem_mark with line/column info
+        problem_mark = getattr(e, "problem_mark", None)
+        if problem_mark is not None:
+            error_msg += f" at line {problem_mark.line + 1}, column {problem_mark.column + 1}"
+        error_msg += f": {e}"
+        raise ValueError(error_msg) from e
 
-    # Parse and validate the YAML records
-    layout = Layout.model_validate(raw_records)
+    # Parse and validate the YAML records using Pydantic
+    try:
+        layout = Layout.model_validate(raw_data)
+    except ValidationError as e:
+        # Use Pydantic's built-in error formatting
+        error_msg = f"Validation error in {layout_path}:\n{e}"
+        raise ValueError(error_msg) from e
+
+    # Extract config entries and override directory
+    layout_entries: list[SectionEntry | FileEntry] = []
+    for record in layout.root:
+        if isinstance(record, ConfigEntry):
+            # Override from YAML takes precedence over command line
+            override_dir = resolve_path(record.override, layout_path.parent)
+        else:
+            # Keep non-config entries for processing
+            layout_entries.append(record)
 
     # Get the directory of the YAML file for resolving relative paths
     default_dir = layout_path.parent.resolve()
@@ -446,20 +655,28 @@ def render(layout_path: Path, output: Path, index_path: Path | None = None) -> N
     try:
         combined_pdf = pikepdf.Pdf.new()
         outline_items: list[pikepdf.OutlineItem] = []
+        last_source: Path | None = None  # Track the last used source file
 
-        for record in layout.root:
+        for record in layout_entries:
             if isinstance(record, SectionEntry):
                 # Process all items in this section
                 children: list[pikepdf.OutlineItem] = []
                 first_item_page: int | None = None
 
                 for item in record.body:
-                    item_title, item_page = process_file_entry(
-                        item, default_dir, combined_pdf, index
+                    result = process_file_entry(
+                        item, default_dir, combined_pdf, index, override_dir, last_source
                     )
+                    if result is None:
+                        # Tune not found, skip it
+                        print(f"Warning: Skipping '{item.title or 'unknown'}': not found in index or override directory")
+                        continue
+                    item_title, item_page, item_source = result
                     if first_item_page is None:
                         first_item_page = item_page
                     children.append(pikepdf.OutlineItem(item_title, item_page))
+                    # Update last_source for next lookup
+                    last_source = item_source
 
                 # Create section outline item with children
                 section_item = pikepdf.OutlineItem(
@@ -469,8 +686,15 @@ def render(layout_path: Path, output: Path, index_path: Path | None = None) -> N
                 outline_items.append(section_item)
             else:
                 # FileEntry - flat file entry
-                title, page = process_file_entry(record, default_dir, combined_pdf, index)
+                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, last_source)
+                if result is None:
+                    # Tune not found, skip it
+                    print(f"Warning: Skipping '{record.title or 'unknown'}': not found")
+                    continue
+                title, page, source = result
                 outline_items.append(pikepdf.OutlineItem(title, page))
+                # Update last_source for next entry
+                last_source = source
 
         # Add the outline to the combined PDF
         with combined_pdf.open_outline() as pdf_outline:

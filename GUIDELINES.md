@@ -8,6 +8,7 @@
 - Avoid noise and incorrect behavior. ALWAYS check comments and documentation to be in sync with the code.
 - DRY. Factor out common code patterns into functions. 
 - Where possible, derive coding convensions from the code itself
+- AVOID hardcoded file paths.
 
 ## Python Style & Naming Conventions
 - Target Python 3.12 features (e.g., `typing.Sequence`, union syntax); use 4-space indents and keep modules import-order clean (`stdlib`, `third-party`, `local`).

@@ -23,6 +23,17 @@ class IndexFile(BaseModel):
     index: list[IndexEntry]
 
 
+class BookEntry(BaseModel):
+    """Schema for an entry in the main index.json file."""
+
+    source: str  # PDF path relative to the index.json file
+    index: str  # Path to the index JSON file relative to index.json
+    title: str | None = None
+    edition: int | None = None
+    volume: int | None = None
+    shift: int | None = None  # Page offset to apply
+
+
 class ChartLocation(NamedTuple):
     """Result of a chart lookup."""
 
@@ -69,17 +80,19 @@ class Index:
 
     def lookup(self, title: str) -> ChartLocation | None:
         """
-        Look up a chart by exact title.
+        Look up a chart by exact title, returning the highest priority match.
+        Matching is case-insensitive.
 
         Args:
-            title: The title to search for (exact match).
+            title: The title to search for (exact match, case-insensitive).
 
         Returns:
-            ChartLocation if found, None otherwise.
+            ChartLocation if found (highest priority), None otherwise.
         """
         cursor = self._get_connection().cursor()
         cursor.execute(
-            "SELECT source_path, page, length FROM charts WHERE title = ?", (title,)
+            "SELECT source_path, page, length FROM charts WHERE LOWER(title) = ? ORDER BY priority DESC LIMIT 1",
+            (title.lower(),),
         )
         row = cursor.fetchone()
 
@@ -87,9 +100,29 @@ class Index:
             return ChartLocation(source_path=row[0], page=row[1], length=row[2])
         return None
 
+    def lookup_all(self, title: str) -> list[ChartLocation]:
+        """
+        Look up all instances of a chart by exact title.
+        Matching is case-insensitive.
+
+        Args:
+            title: The title to search for (exact match, case-insensitive).
+
+        Returns:
+            List of ChartLocation objects, ordered by priority (highest first).
+        """
+        cursor = self._get_connection().cursor()
+        cursor.execute(
+            "SELECT source_path, page, length FROM charts WHERE LOWER(title) = ? ORDER BY priority DESC",
+            (title.lower(),),
+        )
+        rows = cursor.fetchall()
+        return [ChartLocation(source_path=r[0], page=r[1], length=r[2]) for r in rows]
+
     def lookup_fuzzy(self, title: str) -> list[ChartLocation]:
         """
         Look up charts by partial title match.
+        Matching is case-insensitive.
 
         Args:
             title: The title to search for (case-insensitive contains).
@@ -99,19 +132,19 @@ class Index:
         """
         cursor = self._get_connection().cursor()
         cursor.execute(
-            "SELECT source_path, page, length FROM charts WHERE title LIKE ?",
-            (f"%{title}%",),
+            "SELECT source_path, page, length FROM charts WHERE LOWER(title) LIKE ?",
+            (f"%{title.lower()}%",),
         )
         rows = cursor.fetchall()
         return [ChartLocation(source_path=r[0], page=r[1], length=r[2]) for r in rows]
 
     @classmethod
-    def build(cls, index_dir: Path, output_path: Path) -> "Index":
+    def build(cls, index_json_path: Path, output_path: Path) -> "Index":
         """
-        Scan a directory for JSON index files and build a SQLite index.
+        Build a SQLite index from the main index.json file.
 
         Args:
-            index_dir: Directory to scan for *.json files.
+            index_json_path: Path to the main index.json file.
             output_path: Path to the SQLite database file to create.
 
         Returns:
@@ -133,52 +166,104 @@ class Index:
                 title TEXT NOT NULL,
                 source_path TEXT NOT NULL,
                 page INTEGER NOT NULL,
-                length INTEGER NOT NULL DEFAULT 1
+                length INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL DEFAULT 0
             )
         """)
 
-        # Create index for fast title lookups
+        # Create indexes for fast title lookups
         cursor.execute("CREATE INDEX idx_title ON charts (title)")
+        cursor.execute("CREATE INDEX idx_title_priority ON charts (title, priority DESC)")
 
-        # Scan for JSON files
-        json_files = list(index_dir.rglob("*.json"))
+        # Read the main index.json file
+        index_json_path = Path(index_json_path)
+        if not index_json_path.exists():
+            raise FileNotFoundError(f"Index file not found: {index_json_path}")
+
+        with open(index_json_path, "r", encoding="utf-8") as f:
+            main_index_data = json.load(f)
+
+        # Validate and process book entries
+        book_entries = [BookEntry.model_validate(entry) for entry in main_index_data]
+        index_dir = index_json_path.parent
+
+        # Track duplicates
+        title_counts: dict[str, int] = {}
+        duplicate_titles: set[str] = set()
+
         total_charts = 0
+        processed_books = 0
 
-        for json_file in json_files:
+        # Process each book entry in order (later entries get higher priority)
+        for priority, book_entry in enumerate(book_entries):
             try:
-                with open(json_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                # Resolve the index file path
+                index_file_path = (index_dir / book_entry.index).resolve()
+                if not index_file_path.exists():
+                    print(f"Warning: Index file not found: {index_file_path} (referenced in {index_json_path})")
+                    continue
 
-                # Validate the JSON structure
-                index_file = IndexFile.model_validate(data)
+                # Read and validate the index file
+                with open(index_file_path, "r", encoding="utf-8") as f:
+                    index_data = json.load(f)
 
-                # Resolve the source path relative to the JSON file
-                source_path = (json_file.parent / index_file.source).resolve()
+                # Index files are now just arrays of entries
+                if not isinstance(index_data, list):
+                    raise ValueError(f"Index file must be an array, got {type(index_data).__name__}")
+
+                # Validate all entries
+                entries = [IndexEntry.model_validate(entry) for entry in index_data]
+
+                # Resolve the source PDF path
+                source_path = (index_dir / book_entry.source).resolve()
                 
                 # Check that the source file exists
                 if not source_path.exists():
-                    raise FileNotFoundError(
-                        f"Source file not found: {source_path} (referenced in {json_file})"
-                    )
+                    print(f"Warning: Source file not found: {source_path} (referenced in {index_json_path})")
+                    continue
 
-                # Insert all entries
-                for entry in index_file.index:
+                # Calculate page shift if specified
+                page_shift = book_entry.shift or 0
+
+                # Insert all entries from this book
+                for entry in entries:
+                    # Apply page shift if specified
+                    page = entry.page + page_shift
+                    
+                    # Store title in lowercase for case-insensitive matching
+                    title_lower = entry.title.lower()
+                    
+                    # Track title occurrences (using lowercase for duplicate detection)
+                    title_counts[title_lower] = title_counts.get(title_lower, 0) + 1
+                    if title_counts[title_lower] > 1:
+                        duplicate_titles.add(title_lower)
+
                     cursor.execute(
-                        "INSERT INTO charts (title, source_path, page, length) VALUES (?, ?, ?, ?)",
-                        (entry.title, str(source_path), entry.page, entry.pages),
+                        "INSERT INTO charts (title, source_path, page, length, priority) VALUES (?, ?, ?, ?, ?)",
+                        (title_lower, str(source_path), page, entry.pages, priority),
                     )
                     total_charts += 1
 
+                processed_books += 1
+
             except Exception as e:
-                print(f"Warning: Skipping {json_file}: {e}")
+                print(f"Warning: Skipping book entry {book_entry.source}: {e}")
                 continue
 
         conn.commit()
         conn.close()
 
+        # Print summary
         print(
-            f"Indexed {total_charts} charts from {len(json_files)} files into {output_path}"
+            f"Indexed {total_charts} charts from {processed_books} books into {output_path}"
         )
+
+        # List duplicates
+        if duplicate_titles:
+            print(f"\nFound {len(duplicate_titles)} titles with duplicates:")
+            for title in sorted(duplicate_titles):
+                count = title_counts[title]
+                print(f"  - {title} ({count} instances)")
 
         return cls(output_path)
 

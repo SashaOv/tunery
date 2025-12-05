@@ -17,12 +17,12 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Index command: tunery index <index_dir>
+    # Index command: tunery index <index.json>
     index_parser = subparsers.add_parser(
-        "index", help="Build index from JSON files in a directory"
+        "index", help="Build index from the JSON file"
     )
     index_parser.add_argument(
-        "index_dir", type=Path, help="Directory containing JSON index files"
+        "index_json", type=Path, help="Path to the main index.json file"
     )
 
     # Render command: tunery render <layout.yaml> [-o output.pdf] [--index <path>]
@@ -45,13 +45,19 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_INDEX_PATH,
         help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
     )
+    render_parser.add_argument(
+        "--override",
+        type=Path,
+        default=None,
+        help="Override directory: if <title>.pdf exists here, use it instead of index lookup",
+    )
 
     return parser.parse_args(args)
 
 
 def cmd_index(args: argparse.Namespace) -> None:
     """Handle the 'index' subcommand."""
-    Index.build(args.index_dir, DEFAULT_INDEX_PATH)
+    Index.build(args.index_json, DEFAULT_INDEX_PATH)
 
 
 def cmd_render(args: argparse.Namespace) -> None:
@@ -59,7 +65,7 @@ def cmd_render(args: argparse.Namespace) -> None:
     output_path = (
         args.output if args.output else args.layout.with_name(f"{args.layout.stem}.pdf")
     )
-    render(args.layout, output_path, args.index)
+    render(args.layout, output_path, args.index, args.override)
 
 
 def main(args: Sequence[str] | None = None) -> None:

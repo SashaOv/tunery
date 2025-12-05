@@ -18,6 +18,11 @@ dependencies = [
 [project.scripts]
 tunery = "tunery.main:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
