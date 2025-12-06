@@ -18,10 +18,13 @@ dependencies = [
 [project.scripts]
 tunery = "tunery.main:main"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.0.0",
 ]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [build-system]
 requires = ["hatchling"]

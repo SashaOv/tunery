@@ -2,26 +2,14 @@
 
 A system to manage a database of tunes (charts) easily create set list PDFs.
 
-## Contributing
+## Usage
+Two main functions: 1) build index, 2) render the PDF file based on the layout YAML file.
 
-Humans and LLMs -- please refer to GUIDLINES.md .
+For more information, do `tunery --help`
 
-## Building
+### Example layout file:
 
-
-```bash
-# Install development dependencies
-uv pip install -e .
-```
-
-TODO
-
-
-## How to use
-
-### 1 Create a layout file
-
-For example, `favorites.yaml`:
+`favorites.yaml`:
 
 ```yaml
 - file: favorite-tunes/Giant Steps.pdf
@@ -29,16 +17,20 @@ For example, `favorites.yaml`:
   title: Lennie's Pennies
 ```
 
-### Run the command
+## Developing
 
-```bash
-tunery render favorites.yaml
-```
+**Guidelines**: Humans and LLMs -- please follow @docs/GUIDLINES.md . 
 
-This command will create `favorites.pdf` in the same directory as the layout file.
+### Set up
+
+- Install [UV](https://docs.astral.sh/uv/getting-started/installation/)
+- Create virtual environment: `uv venv`
+- Install dependencies (including development dependencies) `uv sync`
+- (Optional) Activate virtual environment: `source .venv/bin/activate`
+
 
 ## License
 
 Licensed under the Apache License, Version 2.0 (the "License").
 
-Copyright (C) 2024 Sasha Ovsankin
+Copyright (C) 2024-2025 Sasha Ovsankin
