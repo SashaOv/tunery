@@ -1,11 +1,14 @@
 """Index module for building and querying the chart index SQLite database."""
 
 import json
+import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import List
 
 from pydantic import BaseModel, PositiveInt
+from rapidfuzz import fuzz, process
 
 
 class IndexEntry(BaseModel):
@@ -34,12 +37,22 @@ class BookEntry(BaseModel):
     shift: int | None = None  # Page offset to apply
 
 
-class ChartLocation(NamedTuple):
+@dataclass
+class ChartLocation:
     """Result of a chart lookup."""
 
     source_path: str
     page: int
     length: int
+
+
+@dataclass
+class FuzzyMatch:
+    """Result of a fuzzy chart lookup with similarity score."""
+
+    location: ChartLocation
+    score: float
+    matched_title: str
 
 
 class Index:
@@ -138,6 +151,82 @@ class Index:
         rows = cursor.fetchall()
         return [ChartLocation(source_path=r[0], page=r[1], length=r[2]) for r in rows]
 
+    def _normalize_title(self, title: str) -> str:
+        """Normalize a title for fuzzy matching: lowercase, remove punctuation, normalize whitespace."""
+        # Convert to lowercase
+        normalized = title.lower()
+        # Remove punctuation except spaces
+        normalized = re.sub(r'[^\w\s]', '', normalized)
+        # Normalize whitespace
+        normalized = ' '.join(normalized.split())
+        return normalized
+
+    def lookup_fuzzy_edit_distance(
+        self, title: str, score_cutoff: int = 90, limit: int = 5
+    ) -> List[FuzzyMatch]:
+        """
+        Look up charts using fuzzy string matching with edit distance.
+        Returns matches with similarity scores and matched titles.
+
+        Args:
+            title: The title to search for.
+            score_cutoff: Minimum similarity score (0-100). Default 90.
+            limit: Maximum number of results to return. Default 5.
+
+        Returns:
+            List of FuzzyMatch objects, sorted by score (highest first).
+        """
+        cursor = self._get_connection().cursor()
+        # Get all titles from the database
+        cursor.execute("SELECT DISTINCT title FROM charts")
+        all_titles = [row[0] for row in cursor.fetchall()]
+
+        if not all_titles:
+            return []
+
+        # Normalize the search title
+        normalized_search = self._normalize_title(title)
+
+        # Use rapidfuzz to find best matches
+        # We'll match against normalized titles but return original titles
+        title_map = {self._normalize_title(t): t for t in all_titles}
+        # Use ratio (simple edit distance) which works well after normalization
+        # Normalization already handles punctuation/hyphens, so ratio is appropriate
+        matches = process.extract(
+            normalized_search,
+            title_map.keys(),
+            scorer=fuzz.ratio,
+            score_cutoff=score_cutoff,
+            limit=limit,
+        )
+
+        # For each match, get all chart locations with that title
+        results: List[FuzzyMatch] = []
+        seen_locations: set[tuple[str, int]] = set()  # (source_path, page) to avoid duplicates
+
+        for matched_title_norm, score, _ in matches:
+            original_title = title_map[matched_title_norm]
+            cursor.execute(
+                "SELECT source_path, page, length FROM charts WHERE title = ? ORDER BY priority DESC",
+                (original_title,),
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                location_key = (row[0], row[1])
+                if location_key not in seen_locations:
+                    seen_locations.add(location_key)
+                    results.append(
+                        FuzzyMatch(
+                            location=ChartLocation(source_path=row[0], page=row[1], length=row[2]),
+                            score=score,
+                            matched_title=original_title,
+                        )
+                    )
+
+        # Sort by score descending
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results[:limit]
+
     @classmethod
     def build(cls, index_json_path: Path, output_path: Path) -> "Index":
         """
@@ -188,7 +277,10 @@ class Index:
         index_dir = index_json_path.parent
 
         # Track duplicates
+        # title_counts uses lowercase keys for case-insensitive duplicate detection
         title_counts: dict[str, int] = {}
+        # Map lowercase title to a representative original title for display
+        title_representatives: dict[str, str] = {}
         duplicate_titles: set[str] = set()
 
         total_charts = 0
@@ -235,8 +327,12 @@ class Index:
                     
                     # Track title occurrences (using lowercase for duplicate detection)
                     title_counts[title_lower] = title_counts.get(title_lower, 0) + 1
+                    # Store the first original title we see for this lowercase key
+                    if title_lower not in title_representatives:
+                        title_representatives[title_lower] = entry.title
                     if title_counts[title_lower] > 1:
-                        duplicate_titles.add(title_lower)
+                        # Use the representative original title for display
+                        duplicate_titles.add(title_representatives[title_lower])
 
                     cursor.execute(
                         "INSERT INTO charts (title, source_path, page, length, priority) VALUES (?, ?, ?, ?, ?)",
@@ -262,7 +358,10 @@ class Index:
         if duplicate_titles:
             print(f"\nFound {len(duplicate_titles)} titles with duplicates:")
             for title in sorted(duplicate_titles):
-                count = title_counts[title]
+                # title_counts uses lowercase keys, but duplicate_titles contains original titles
+                # We need to look up by the lowercase version
+                title_lower = title.lower()
+                count = title_counts.get(title_lower, 0)
                 print(f"  - {title} ({count} instances)")
 
         return cls(output_path)

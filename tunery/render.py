@@ -1,13 +1,15 @@
 """PDF rendering logic for combining PDFs with table of contents."""
 
+import re
 from pathlib import Path
 from typing import List
 
 import pikepdf
 import yaml
 from pydantic import BaseModel, Field, PositiveInt, RootModel, ValidationError
+from rapidfuzz import fuzz, process
 
-from tunery.index import Index
+from tunery.index import FuzzyMatch, Index
 
 
 class FileEntry(BaseModel):
@@ -498,15 +500,17 @@ def process_file_entry(
     index: Index | None = None,
     override_dir: Path | None = None,
     preferred_source: Path | None = None,
-) -> tuple[str, int] | None:
+    layout_path: Path | None = None,
+) -> tuple[str, int, Path, str] | None:
     """
-    Add the requested pages for an entry to the combined PDF and return its title and start page index.
+    Add the requested pages for an entry to the combined PDF and return its title, start page index, source path, and status message.
 
-    If the entry contains notes, the page content will be scaled down
-    and the notes will be added at the bottom of the page.
-
-    If the entry has no 'file' but has a 'title', the file will be looked up in the index.
-    If an override directory is specified and contains <title>.pdf, that file is used instead.
+    Returns: (title, page, source_path, status_message) or None if not found.
+    Status message format examples:
+    - "found in \"The Real Book.Vol I\""
+    - "found in \"The Real Book.Vol I\" (fuzzy matching)"
+    - "found in ../../Handouts"
+    - "not found. Is this \"Sweet Georgia Bright\"?"
     """
     # Determine the input PDF path and page/length
     input_pdf_path: Path | None = None
@@ -516,6 +520,7 @@ def process_file_entry(
         title = entry.title if entry.title else input_pdf_path.stem
         page = entry.page
         length = entry.length
+        status = f'found    "{entry.title if entry.title else input_pdf_path.stem}" in {input_pdf_path.parent}'
     else:
         # Look up in the index by title
         if not entry.title:
@@ -524,22 +529,107 @@ def process_file_entry(
         title = entry.title
         
         # Check override directory first if specified
+        override_fuzzy_score: float | None = None
         if override_dir and override_dir.exists():
+            # Try exact match first
             override_file = override_dir / f"{title}.pdf"
-            if override_file.exists():
+            if not override_file.exists():
+                # Try case-insensitive match
+                title_lower = title.lower()
+                for pdf_file in override_dir.glob("*.pdf"):
+                    if pdf_file.stem.lower() == title_lower:
+                        override_file = pdf_file
+                        break
+                else:
+                    # No exact or case-insensitive match found, try fuzzy matching
+                    pdf_files = list(override_dir.glob("*.pdf"))
+                    if pdf_files:
+                        # Normalize title for fuzzy matching (same as index normalization)
+                        normalized_search = title.lower()
+                        normalized_search = re.sub(r'[^\w\s]', '', normalized_search)
+                        normalized_search = ' '.join(normalized_search.split())
+                        
+                        # Create mapping of normalized filenames to actual paths
+                        file_map = {}
+                        for pdf_file in pdf_files:
+                            normalized_name = pdf_file.stem.lower()
+                            normalized_name = re.sub(r'[^\w\s]', '', normalized_name)
+                            normalized_name = ' '.join(normalized_name.split())
+                            file_map[normalized_name] = pdf_file
+                        
+                        # Find best match
+                        matches = process.extract(
+                            normalized_search,
+                            file_map.keys(),
+                            scorer=fuzz.ratio,
+                            score_cutoff=90,
+                            limit=1,
+                        )
+                        if matches:
+                            matched_name, score, _ = matches[0]
+                            override_file = file_map[matched_name]
+                            # Store score for status message
+                            override_fuzzy_score = score
+                        else:
+                            override_file = None
+                    else:
+                        override_file = None
+            
+            if override_file and override_file.exists():
                 # Use override file, skip index lookup
                 input_pdf_path = override_file
                 page = entry.page if entry.page else 1
                 length = entry.length if entry.length else 1
+                # Get relative path for display
+                try:
+                    if layout_path:
+                        override_rel = override_file.relative_to(layout_path.parent)
+                        override_path = override_rel.parent
+                    else:
+                        override_path = override_file.parent
+                except ValueError:
+                    override_path = override_file.parent
+                
+                # Check if this was a fuzzy match
+                if override_fuzzy_score is not None:
+                    status = f'found    "{title}" in {override_path} (fuzzy score {override_fuzzy_score:.0f}%)'
+                else:
+                    status = f'found    "{title}" in {override_path}'
             else:
                 # No override file found, fall back to index lookup
                 if index is None:
-                    raise ValueError(
-                        f"Cannot look up '{title}': no index available and no override file found. "
-                        "Run 'tunery index <dir>' first."
-                    )
+                    # Check for fuzzy matches in override directory as hints
+                    fuzzy_hints = []
+                    if override_dir and override_dir.exists():
+                        pdf_files = list(override_dir.glob("*.pdf"))
+                        if pdf_files:
+                            normalized_search = title.lower()
+                            normalized_search = re.sub(r'[^\w\s]', '', normalized_search)
+                            normalized_search = ' '.join(normalized_search.split())
+                            file_map = {}
+                            for pdf_file in pdf_files:
+                                normalized_name = pdf_file.stem.lower()
+                                normalized_name = re.sub(r'[^\w\s]', '', normalized_name)
+                                normalized_name = ' '.join(normalized_name.split())
+                                file_map[normalized_name] = pdf_file
+                            matches = process.extract(
+                                normalized_search,
+                                file_map.keys(),
+                                scorer=fuzz.ratio,
+                                score_cutoff=70,  # Lower threshold for hints
+                                limit=1,
+                            )
+                            if matches:
+                                matched_name, score, _ = matches[0]
+                                fuzzy_hints.append(f'"{file_map[matched_name].stem}"')
+                    status = f'not found "{title}"'
+                    if fuzzy_hints:
+                        status += f'. Is this {fuzzy_hints[0]}?'
+                    print(f'{status}')
+                    return None
 
                 # Try to find a match in the preferred source first
+                exact_match = False
                 if preferred_source:
                     all_matches = index.lookup_all(title)
                     preferred_match = next(
@@ -548,15 +638,47 @@ def process_file_entry(
                     )
                     if preferred_match:
                         location = preferred_match
+                        exact_match = True
                     else:
                         location = index.lookup(title)
+                        exact_match = location is not None
                 else:
                     location = index.lookup(title)
+                    exact_match = location is not None
+                
+                # If exact match failed, try fuzzy matching
+                index_fuzzy_match_used: FuzzyMatch | None = None
+                if not location:
+                    fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=90, limit=1)
+                    if fuzzy_matches:
+                        index_fuzzy_match_used = fuzzy_matches[0]
+                        location = index_fuzzy_match_used.location
                 
                 if not location:
+                    # Not found - get hints from fuzzy matches (even below threshold)
+                    fuzzy_hints = []
+                    fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=70, limit=1)
+                    if fuzzy_matches:
+                        hint_match = fuzzy_matches[0]
+                        matched_title = hint_match.matched_title
+                        # Get source name
+                        source_name = Path(hint_match.location.source_path).stem
+                        fuzzy_hints.append(f'"{matched_title}" in "{source_name}"')
+                    
+                    status = f'not found "{title}"'
+                    if fuzzy_hints:
+                        status += f'. Is this {fuzzy_hints[0]}?'
+                    print(f'{status}')
                     return None
 
                 input_pdf_path = Path(location.source_path)
+                source_name = input_pdf_path.stem
+                if exact_match:
+                    status = f'found    "{title}" in "{source_name}"'
+                else:
+                    # index_fuzzy_match_used was set earlier and is not None
+                    assert index_fuzzy_match_used is not None
+                    status = f'found    "{title}" in "{source_name}" (fuzzy score {index_fuzzy_match_used.score:.0f}%)'
                 # Use entry's page/length if specified, otherwise use from index
                 page = entry.page if entry.page else location.page
                 length = entry.length if entry.length else location.length
@@ -569,6 +691,7 @@ def process_file_entry(
                 )
 
             # Try to find a match in the preferred source first
+            exact_match = False
             if preferred_source:
                 all_matches = index.lookup_all(title)
                 preferred_match = next(
@@ -577,15 +700,47 @@ def process_file_entry(
                 )
                 if preferred_match:
                     location = preferred_match
+                    exact_match = True
                 else:
                     location = index.lookup(title)
+                    exact_match = location is not None
             else:
                 location = index.lookup(title)
+                exact_match = location is not None
+            
+            # If exact match failed, try fuzzy matching
+            index_fuzzy_match: FuzzyMatch | None = None
+            if not location:
+                fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=90, limit=1)
+                if fuzzy_matches:
+                    index_fuzzy_match = fuzzy_matches[0]
+                    location = index_fuzzy_match.location
             
             if not location:
+                # Not found - get hints from fuzzy matches (even below threshold)
+                fuzzy_hints = []
+                fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=70, limit=1)
+                if fuzzy_matches:
+                    hint_match = fuzzy_matches[0]
+                    matched_title = hint_match.matched_title
+                    # Get source name
+                    source_name = Path(hint_match.location.source_path).stem
+                    fuzzy_hints.append(f'"{matched_title}" in "{source_name}"')
+                
+                    status = f'not found "{title}"'
+                    if fuzzy_hints:
+                        status += f'. Is this {fuzzy_hints[0]}?'
+                    print(f'{status}')
                 return None
 
             input_pdf_path = Path(location.source_path)
+            source_name = input_pdf_path.stem
+            if exact_match:
+                status = f'found    "{title}" in "{source_name}"'
+            else:
+                # index_fuzzy_match was set earlier and is not None
+                assert index_fuzzy_match is not None
+                status = f'found    "{title}" in "{source_name}" (fuzzy score {index_fuzzy_match.score:.0f}%)'
             # Use entry's page/length if specified, otherwise use from index
             page = entry.page if entry.page else location.page
             length = entry.length if entry.length else location.length
@@ -602,7 +757,7 @@ def process_file_entry(
         # No notes - use the standard bulk extraction
         copy_pages(combined_pdf, str(input_pdf_path), page, length)
 
-    return title, entry_page, input_pdf_path
+    return title, entry_page, input_pdf_path, status
 
 
 def render(
@@ -665,13 +820,13 @@ def render(
 
                 for item in record.body:
                     result = process_file_entry(
-                        item, default_dir, combined_pdf, index, override_dir, last_source
+                        item, default_dir, combined_pdf, index, override_dir, last_source, layout_path
                     )
                     if result is None:
-                        # Tune not found, skip it
-                        print(f"Warning: Skipping '{item.title or 'unknown'}': not found in index or override directory")
+                        # Tune not found - status was already printed in process_file_entry
                         continue
-                    item_title, item_page, item_source = result
+                    item_title, item_page, item_source, status = result
+                    print(f'{status}')
                     if first_item_page is None:
                         first_item_page = item_page
                     children.append(pikepdf.OutlineItem(item_title, item_page))
@@ -686,12 +841,12 @@ def render(
                 outline_items.append(section_item)
             else:
                 # FileEntry - flat file entry
-                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, last_source)
+                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, last_source, layout_path)
                 if result is None:
-                    # Tune not found, skip it
-                    print(f"Warning: Skipping '{record.title or 'unknown'}': not found")
+                    # Tune not found - status was already printed in process_file_entry
                     continue
-                title, page, source = result
+                title, page, source, status = result
+                print(f'{status}')
                 outline_items.append(pikepdf.OutlineItem(title, page))
                 # Update last_source for next entry
                 last_source = source

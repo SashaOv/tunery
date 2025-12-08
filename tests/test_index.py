@@ -382,13 +382,10 @@ def test_context_manager(tmp_path: Path) -> None:
     assert index._conn is None
 
 
-def test_chart_location_namedtuple() -> None:
-    """Test ChartLocation is a proper NamedTuple."""
+def test_chart_location_dataclass() -> None:
+    """Test ChartLocation is a proper dataclass."""
     loc = ChartLocation(source_path="/path/to/book.pdf", page=42, length=2)
     assert loc.source_path == "/path/to/book.pdf"
     assert loc.page == 42
     assert loc.length == 2
-    # Can unpack
-    path, page, length = loc
-    assert path == "/path/to/book.pdf"
 
