@@ -190,12 +190,13 @@ class Index:
         # Use rapidfuzz to find best matches
         # We'll match against normalized titles but return original titles
         title_map = {self._normalize_title(t): t for t in all_titles}
-        # Use ratio (simple edit distance) which works well after normalization
-        # Normalization already handles punctuation/hyphens, so ratio is appropriate
+        # Use token_set_ratio which handles missing/extra words (like articles) better
+        # This is important for cases like "Girl from Ipanema" vs "The Girl from Ipanema"
+        # token_set_ratio compares the sets of words, ignoring order and extra words
         matches = process.extract(
             normalized_search,
             title_map.keys(),
-            scorer=fuzz.ratio,
+            scorer=fuzz.token_set_ratio,
             score_cutoff=score_cutoff,
             limit=limit,
         )
