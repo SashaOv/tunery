@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from tunery.render import render, copy_pages, get_page_label_to_index_map
+from tunery.index import Index
 
 
 def create_pdf(path: Path, page_count: int) -> Path:
@@ -23,6 +24,13 @@ def write_layout(path: Path, records: Sequence[dict]) -> Path:
     return path
 
 
+def write_json(path: Path, data: object) -> Path:
+    import json
+
+    path.write_text(json.dumps(data))
+    return path
+
+
 def outline_page_index(pdf: pikepdf.Pdf, outline_item: pikepdf.OutlineItem) -> int:
     destination = outline_item.destination
     if destination is None:
@@ -36,9 +44,9 @@ def test_bind_pdf_combines_sections_and_flat_entries(tmp_path: Path) -> None:
     layout_dir.mkdir()
 
     schedule_pdf = create_pdf(layout_dir / "Schedule.pdf", 2)
-    songbook_pdf = create_pdf(layout_dir / "Songbook.pdf", 6)
-    groove_pdf = create_pdf(layout_dir / "Groove Standard.pdf", 1)
-    ballad_pdf = create_pdf(layout_dir / "Ballad.pdf", 1)
+    create_pdf(layout_dir / "Songbook.pdf", 6)
+    create_pdf(layout_dir / "Groove Standard.pdf", 1)
+    create_pdf(layout_dir / "Ballad.pdf", 1)
 
     dropbox_dir = tmp_path / "absolute"
     feature_pdf = create_pdf(dropbox_dir / "Feature Piece.pdf", 1)
@@ -133,7 +141,7 @@ def test_bind_pdf_handles_empty_section(tmp_path: Path) -> None:
     layout_dir = tmp_path / "empty"
     layout_dir.mkdir()
 
-    solo_pdf = create_pdf(layout_dir / "Solo Tune.pdf", 1)
+    create_pdf(layout_dir / "Solo Tune.pdf", 1)
 
     records = [
         {"section": "Empty Section", "body": []},
@@ -155,6 +163,135 @@ def test_bind_pdf_handles_empty_section(tmp_path: Path) -> None:
             assert list(root_items[0].children) == []
             assert root_items[1].title == "Solo Tune"
             assert outline_page_index(merged, root_items[1]) == 0
+
+
+def test_render_prefers_layout_dir_overrides_over_index(tmp_path: Path) -> None:
+    """
+    If a layout entry uses `title:` (no explicit `file:`), and a matching PDF exists
+    next to the YAML, it should be used instead of the global index.
+    """
+    layout_dir = tmp_path / "setlist"
+    layout_dir.mkdir()
+
+    # Local override: 1 page
+    create_pdf(layout_dir / "Country.pdf", 1)
+
+    # Indexed source: 3 pages, and index points at pages 2-3 (length 2)
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+    create_pdf(books_dir / "RealBook.pdf", 3)
+
+    write_json(
+        tmp_path / "book.json",
+        [
+            {"title": "Country", "page": 2, "pages": 2},
+        ],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [
+            {"source": "books/RealBook.pdf", "index": "book.json"},
+        ],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    layout_path = write_layout(layout_dir / "combo.yaml", [{"title": "Country"}])
+    output_path = layout_dir / "combined.pdf"
+
+    render(layout_path, output_path, index_path=index_path)
+
+    # If the override is used, we should have copied 1 page (default page=1, length=1).
+    # If the index is used, we'd copy 2 pages (page=2, length=2).
+    with pikepdf.Pdf.open(output_path) as merged:
+        assert len(merged.pages) == 1
+
+
+def test_render_override_dir_overrides_index(tmp_path: Path) -> None:
+    """
+    If an explicit override_dir is provided, it should override the index.
+
+    This is the intended meaning of "override": local/override PDFs take
+    precedence over indexed songbooks for `title:` entries.
+    """
+    layout_dir = tmp_path / "setlist"
+    layout_dir.mkdir()
+
+    # Explicit override directory (not the layout directory): 1 page.
+    overrides_dir = tmp_path / "overrides"
+    overrides_dir.mkdir()
+    create_pdf(overrides_dir / "Country.pdf", 1)
+
+    # Indexed source: 3 pages, and index points at pages 2-3 (length 2)
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+    create_pdf(books_dir / "RealBook.pdf", 3)
+
+    write_json(
+        tmp_path / "book.json",
+        [
+            {"title": "Country", "page": 2, "pages": 2},
+        ],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [
+            {"source": "books/RealBook.pdf", "index": "book.json"},
+        ],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    layout_path = write_layout(layout_dir / "combo.yaml", [{"title": "Country"}])
+    output_path = layout_dir / "combined.pdf"
+
+    render(layout_path, output_path, index_path=index_path, override_dir=overrides_dir)
+
+    # If the override is used, we should have copied 1 page.
+    # If the index is used, we'd copy 2 pages (page=2, length=2).
+    with pikepdf.Pdf.open(output_path) as merged:
+        assert len(merged.pages) == 1
+
+
+def test_render_override_defaults_to_full_pdf(tmp_path: Path) -> None:
+    """
+    When an override PDF is selected via `title:` and no `page`/`length` is given,
+    we should include the full override PDF (not just the first page).
+    """
+    layout_dir = tmp_path / "setlist"
+    layout_dir.mkdir()
+
+    # Multi-page local override
+    create_pdf(layout_dir / "Country.pdf", 9)
+
+    # Also provide an index that would otherwise resolve "Country"
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+    create_pdf(books_dir / "RealBook.pdf", 3)
+
+    write_json(
+        tmp_path / "book.json",
+        [
+            {"title": "Country", "page": 2, "pages": 2},
+        ],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [
+            {"source": "books/RealBook.pdf", "index": "book.json"},
+        ],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    layout_path = write_layout(layout_dir / "combo.yaml", [{"title": "Country"}])
+    output_path = layout_dir / "combined.pdf"
+
+    render(layout_path, output_path, index_path=index_path)
+
+    # Should include the whole override PDF (9 pages)
+    with pikepdf.Pdf.open(output_path) as merged:
+        assert len(merged.pages) == 9
 
 
 def test_copy_pages_validates_ranges(tmp_path: Path) -> None:

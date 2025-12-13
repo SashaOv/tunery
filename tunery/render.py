@@ -561,7 +561,7 @@ def process_file_entry(
                         matches = process.extract(
                             normalized_search,
                             file_map.keys(),
-                            scorer=fuzz.ratio,
+                            scorer=fuzz.token_set_ratio,
                             score_cutoff=90,
                             limit=1,
                         )
@@ -578,8 +578,11 @@ def process_file_entry(
             if override_file and override_file.exists():
                 # Use override file, skip index lookup
                 input_pdf_path = override_file
-                page = entry.page if entry.page else 1
-                length = entry.length if entry.length else 1
+                # If the layout entry doesn't specify a range, include the whole
+                # override PDF by default. This is important for handouts where
+                # the local PDF is the authoritative source and may be multi-page.
+                page = entry.page
+                length = entry.length
                 # Get relative path for display
                 try:
                     if layout_path:
@@ -615,7 +618,7 @@ def process_file_entry(
                             matches = process.extract(
                                 normalized_search,
                                 file_map.keys(),
-                                scorer=fuzz.ratio,
+                                scorer=fuzz.token_set_ratio,
                                 score_cutoff=70,  # Lower threshold for hints
                                 limit=1,
                             )
@@ -801,6 +804,11 @@ def render(
 
     # Get the directory of the YAML file for resolving relative paths
     default_dir = layout_path.parent.resolve()
+    # By default, treat the layout file directory as the override directory.
+    # This means PDFs next to the YAML (e.g., handouts) take precedence over
+    # indexed songbooks when a `title:` is provided without an explicit `file:`.
+    if override_dir is None:
+        override_dir = default_dir
 
     # Open index if it exists (for title lookups)
     index: Index | None = None
