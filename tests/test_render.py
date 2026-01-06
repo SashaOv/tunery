@@ -416,3 +416,88 @@ def test_get_page_label_to_index_map_handles_multiple_decimal_ranges(tmp_path: P
         assert label_map[2] == 5
         # Page 15 should map to index 18 (from the main range)
         assert label_map[15] == 18
+
+
+def test_bind_pdf_handles_nested_sections(tmp_path: Path) -> None:
+    """Test that nested sections (subsections) are supported in layout files."""
+    layout_dir = tmp_path / "setlist"
+    layout_dir.mkdir()
+
+    create_pdf(layout_dir / "Opener.pdf", 1)
+    create_pdf(layout_dir / "Song A.pdf", 1)
+    create_pdf(layout_dir / "Song B.pdf", 1)
+    create_pdf(layout_dir / "Closer.pdf", 1)
+
+    # Layout with nested sections: Set 1 contains a subsection "Medley"
+    records = [
+        {"file": "Opener.pdf", "title": "Opener"},
+        {
+            "section": "Set 1",
+            "body": [
+                {"file": "Song A.pdf", "title": "Song A"},
+                {
+                    "section": "Medley",
+                    "body": [
+                        {"file": "Song B.pdf", "title": "Song B"},
+                    ],
+                },
+            ],
+        },
+        {"file": "Closer.pdf", "title": "Closer"},
+    ]
+
+    layout_path = write_layout(layout_dir / "nested.yaml", records)
+    output_path = layout_dir / "nested.pdf"
+
+    render(layout_path, output_path)
+
+    with pikepdf.Pdf.open(output_path) as merged:
+        # Should have 4 pages total
+        assert len(merged.pages) == 4
+
+        with merged.open_outline() as outline:
+            root_items = list(outline.root)
+            # Top level: Opener, Set 1, Closer
+            assert len(root_items) == 3
+            assert root_items[0].title == "Opener"
+            assert root_items[1].title == "Set 1"
+            assert root_items[2].title == "Closer"
+
+            # Set 1 children: Song A, Medley (subsection)
+            set1_children = list(root_items[1].children)
+            assert len(set1_children) == 2
+            assert set1_children[0].title == "Song A"
+            assert set1_children[1].title == "Medley"
+
+            # Medley children: Song B
+            medley_children = list(set1_children[1].children)
+            assert len(medley_children) == 1
+            assert medley_children[0].title == "Song B"
+
+
+def test_process_file_entry_returns_not_found_result(tmp_path: Path) -> None:
+    """Test that process_file_entry returns NotFoundResult for missing titles."""
+    from tunery.render import process_file_entry, FileEntry, NotFoundResult
+
+    layout_dir = tmp_path / "setlist"
+    layout_dir.mkdir()
+
+    # Create a combined PDF to pass to the function
+    combined_pdf = pikepdf.Pdf.new()
+
+    # Create a FileEntry for a title that doesn't exist
+    entry = FileEntry(title="Missing Song")
+
+    result = process_file_entry(
+        entry,
+        default_dir=layout_dir,
+        combined_pdf=combined_pdf,
+        index=None,
+        override_dir=layout_dir,
+        layout_path=None,
+    )
+
+    # Should return NotFoundResult
+    assert isinstance(result, NotFoundResult)
+    assert result.title == "Missing Song"
+    assert 'not found "Missing Song"' in result.format()

@@ -1,5 +1,6 @@
 """PDF rendering logic for combining PDFs with table of contents."""
 
+from dataclasses import dataclass
 import re
 from pathlib import Path
 from typing import List
@@ -31,10 +32,10 @@ class FileEntry(BaseModel):
 
 
 class SectionEntry(BaseModel):
-    """A section containing nested file entries."""
+    """A section containing nested file entries or subsections."""
 
     section: str
-    body: List[FileEntry] = Field(default_factory=list)
+    body: List["FileEntry | SectionEntry"] = Field(default_factory=list)
 
 
 class ConfigEntry(BaseModel):
@@ -492,6 +493,43 @@ def copy_pages_with_notes(
 
         return end_idx - start_idx
 
+@dataclass
+class ProcessEntryResult:
+    """Base class for processing results."""
+    title: str
+
+    def format(self) -> str:
+        """Format the result as a human-readable string."""
+        raise NotImplementedError
+
+
+@dataclass
+class NotFoundResult(ProcessEntryResult):
+    """Title not found."""
+    hint: str | None = None  # e.g., 'Is this "Similar Title" in "Book"?'
+
+    def format(self) -> str:
+        msg = f'not found "{self.title}"'
+        if self.hint:
+            msg += f'. {self.hint}'
+        return msg
+
+
+@dataclass
+class SuccessResult(ProcessEntryResult):
+    """Successfully found and processed a file entry."""
+    page: int
+    source_path: Path
+    source: str  # display name of the source (book name or directory path)
+    matched_title: str | None = None  # set if fuzzy matched
+    score: float | None = None  # set if fuzzy matched
+
+    def format(self) -> str:
+        if self.matched_title is not None:
+            return f'matched  "{self.title}" with "{self.matched_title}" from {self.source} ({self.score:.0f}%)'
+        else:
+            return f'found    "{self.title}" in {self.source}'
+
 
 def process_file_entry(
     entry: FileEntry,
@@ -500,27 +538,25 @@ def process_file_entry(
     index: Index | None = None,
     override_dir: Path | None = None,
     layout_path: Path | None = None,
-) -> tuple[str, int, Path, str] | None:
+) -> ProcessEntryResult:
     """
-    Add the requested pages for an entry to the combined PDF and return its title, start page index, source path, and status message.
+    Add the requested pages for an entry to the combined PDF.
 
-    Returns: (title, page, source_path, status_message) or None if not found.
-    Status message format examples:
-    - "found    \"Country\" in \"The Real Book Vol I\""
-    - "matched  \"Feel Like Making Love\" with \"feel like makin' love\" from \"The Real Book Vol I\" (95%)"
-    - "found    \"Country\" in ../../Handouts"
-    - "matched  \"Country\" with \"Country Roads\" from ../../Handouts (92%)"
-    - "not found \"Country\". Is this \"Country Roads\" in \"The Real Book Vol I\"?"
+    Returns: SuccessResult on success, NotFoundResult if title not found
+             (both subclasses of ProcessEntryResult).
     """
     # Determine the input PDF path and page/length
     input_pdf_path: Path | None = None
+    source: str
+    matched_title: str | None = None
+    score: float | None = None
     if entry.file:
         # File is explicitly specified
         input_pdf_path = resolve_path(entry.file, default_dir)
         title = entry.title if entry.title else input_pdf_path.stem
         page = entry.page
         length = entry.length
-        status = f'found    "{entry.title if entry.title else input_pdf_path.stem}" in {input_pdf_path.parent}'
+        source = str(input_pdf_path.parent)
     else:
         # Look up in the index by title
         if not entry.title:
@@ -594,11 +630,9 @@ def process_file_entry(
                     override_path = override_file.parent
                 
                 # Check if this was a fuzzy match
+                source = str(override_path)
                 if override_fuzzy_match is not None:
-                    matched_filename, score = override_fuzzy_match
-                    status = f'matched  "{title}" with "{matched_filename}" from {override_path} ({score:.0f}%)'
-                else:
-                    status = f'found    "{title}" in {override_path}'
+                    matched_title, score = override_fuzzy_match
             else:
                 # No override file found, fall back to index lookup
                 if index is None:
@@ -626,11 +660,8 @@ def process_file_entry(
                             if matches:
                                 matched_name, score, _ = matches[0]
                                 fuzzy_hints.append(f'"{file_map[matched_name].stem}"')
-                    status = f'not found "{title}"'
-                    if fuzzy_hints:
-                        status += f'. Is this {fuzzy_hints[0]}?'
-                    print(f'{status}')
-                    return None
+                    hint = f'Is this {fuzzy_hints[0]}?' if fuzzy_hints else None
+                    return NotFoundResult(title=title, hint=hint)
 
                 # Exact match (case-insensitive, highest priority wins)
                 location = index.lookup(title)
@@ -646,29 +677,23 @@ def process_file_entry(
                 
                 if not location:
                     # Not found - get hints from fuzzy matches (even below threshold)
-                    fuzzy_hints = []
                     fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=70, limit=1)
                     if fuzzy_matches:
                         hint_match = fuzzy_matches[0]
-                        matched_title = hint_match.matched_title
-                        # Get source name
-                        source_name = Path(hint_match.location.source_path).stem
-                        fuzzy_hints.append(f'"{matched_title}" in "{source_name}"')
-                    
-                    status = f'not found "{title}"'
-                    if fuzzy_hints:
-                        status += f'. Is this {fuzzy_hints[0]}?'
-                    print(f'{status}')
-                    return None
+                        hint_title = hint_match.matched_title
+                        hint_source = Path(hint_match.location.source_path).stem
+                        hint = f'Is this "{hint_title}" in "{hint_source}"?'
+                    else:
+                        hint = None
+                    return NotFoundResult(title=title, hint=hint)
 
                 input_pdf_path = Path(location.source_path)
-                source_name = input_pdf_path.stem
-                if exact_match:
-                    status = f'found    "{title}" in "{source_name}"'
-                else:
+                source = input_pdf_path.stem
+                if not exact_match:
                     # index_fuzzy_match_used was set earlier and is not None
                     assert index_fuzzy_match_used is not None
-                    status = f'matched  "{title}" with "{index_fuzzy_match_used.matched_title}" from "{source_name}" ({index_fuzzy_match_used.score:.0f}%)'
+                    matched_title = index_fuzzy_match_used.matched_title
+                    score = index_fuzzy_match_used.score
                 # Use entry's page/length if specified, otherwise use from index
                 page = entry.page if entry.page else location.page
                 length = entry.length if entry.length else location.length
@@ -694,29 +719,23 @@ def process_file_entry(
             
             if not location:
                 # Not found - get hints from fuzzy matches (even below threshold)
-                fuzzy_hints = []
                 fuzzy_matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=70, limit=1)
                 if fuzzy_matches:
                     hint_match = fuzzy_matches[0]
-                    matched_title = hint_match.matched_title
-                    # Get source name
-                    source_name = Path(hint_match.location.source_path).stem
-                    fuzzy_hints.append(f'"{matched_title}" in "{source_name}"')
-                
-                status = f'not found "{title}"'
-                if fuzzy_hints:
-                    status += f'. Is this {fuzzy_hints[0]}?'
-                print(f'{status}')
-                return None
+                    hint_title = hint_match.matched_title
+                    hint_source = Path(hint_match.location.source_path).stem
+                    hint = f'Is this "{hint_title}" in "{hint_source}"?'
+                else:
+                    hint = None
+                return NotFoundResult(title=title, hint=hint)
 
             input_pdf_path = Path(location.source_path)
-            source_name = input_pdf_path.stem
-            if exact_match:
-                status = f'found    "{title}" in "{source_name}"'
-            else:
+            source = input_pdf_path.stem
+            if not exact_match:
                 # index_fuzzy_match was set earlier and is not None
                 assert index_fuzzy_match is not None
-                status = f'matched  "{title}" with "{index_fuzzy_match.matched_title}" from "{source_name}" ({index_fuzzy_match.score:.0f}%)'
+                matched_title = index_fuzzy_match.matched_title
+                score = index_fuzzy_match.score
             # Use entry's page/length if specified, otherwise use from index
             page = entry.page if entry.page else location.page
             length = entry.length if entry.length else location.length
@@ -733,7 +752,14 @@ def process_file_entry(
         # No notes - use the standard bulk extraction
         copy_pages(combined_pdf, str(input_pdf_path), page, length)
 
-    return title, entry_page, input_pdf_path, status
+    return SuccessResult(
+        title=title,
+        page=entry_page,
+        source_path=input_pdf_path,
+        source=source,
+        matched_title=matched_title,
+        score=score,
+    )
 
 
 def render(
@@ -788,44 +814,42 @@ def render(
     if index_path and index_path.exists():
         index = Index(index_path)
 
-    try:
-        combined_pdf = pikepdf.Pdf.new()
+    def process_items(
+        items: list[SectionEntry | FileEntry],
+    ) -> tuple[list[pikepdf.OutlineItem], int | None]:
+        """
+        Process a list of layout items recursively.
+        Returns (outline_items, first_page_index).
+        """
         outline_items: list[pikepdf.OutlineItem] = []
+        first_page: int | None = None
 
-        for record in layout_entries:
-            if isinstance(record, SectionEntry):
-                # Process all items in this section
-                children: list[pikepdf.OutlineItem] = []
-                first_item_page: int | None = None
-
-                for item in record.body:
-                    result = process_file_entry(
-                        item, default_dir, combined_pdf, index, override_dir, layout_path
-                    )
-                    if result is None:
-                        # Tune not found - status was already printed in process_file_entry
-                        continue
-                    item_title, item_page, item_source, status = result
-                    print(f'{status}')
-                    if first_item_page is None:
-                        first_item_page = item_page
-                    children.append(pikepdf.OutlineItem(item_title, item_page))
-
-                # Create section outline item with children
+        for item in items:
+            if isinstance(item, SectionEntry):
+                # Recursively process subsection
+                children, child_first_page = process_items(item.body)
                 section_item = pikepdf.OutlineItem(
-                    record.section, first_item_page if first_item_page is not None else 0
+                    item.section, child_first_page if child_first_page is not None else 0
                 )
                 section_item.children.extend(children)
                 outline_items.append(section_item)
+                if first_page is None and child_first_page is not None:
+                    first_page = child_first_page
             else:
-                # FileEntry - flat file entry
-                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, layout_path)
-                if result is None:
-                    # Tune not found - status was already printed in process_file_entry
-                    continue
-                title, page, source, status = result
-                print(f'{status}')
-                outline_items.append(pikepdf.OutlineItem(title, page))
+                result = process_file_entry(
+                    item, default_dir, combined_pdf, index, override_dir, layout_path
+                )
+                print(result.format())
+                if isinstance(result, SuccessResult):
+                    outline_items.append(pikepdf.OutlineItem(result.title, result.page))
+                    if first_page is None:
+                        first_page = result.page
+
+        return outline_items, first_page
+
+    try:
+        combined_pdf = pikepdf.Pdf.new()
+        outline_items, _ = process_items(layout_entries)
 
         # Add the outline to the combined PDF
         with combined_pdf.open_outline() as pdf_outline:

@@ -1,7 +1,7 @@
 # Tunery
 **Goal**: build a single printable PDF “setbook” (setlist booklet) by stitching together pages from a collection of existing sheet-music PDFs.
 
-**Method**: maintain a local SQLite index of chart titles → (PDF file, page, page-count), then render a combined PDF from a YAML “layout” that references charts either by explicit file path or by title (resolved via overrides and/or the index).
+**Method**: Use YAML “layout” that references charts either by explicit file path or by title, resolved via file lookup and/or index. **Index** is a local SQLite index of chart titles → (PDF file, page, page-count), built from a set of existing files (books).
 
 ## Deployable
 `tunery` — CLI
@@ -79,7 +79,13 @@ YAML file containing a list of records. Records can be:
     - title: Country           # resolved via overrides/index
     - file: Groove.pdf         # explicit file
       title: Groove Standard
+    - section: Medley          # nested subsection
+      body:
+        - title: Song A
+        - title: Song B
 ```
+
+Sections can be nested arbitrarily deep. Each section creates an outline (bookmark) node with its body items as children.
 
 Fields for a file record:
 - **file** (optional): PDF path (absolute, or relative to the YAML file directory).
