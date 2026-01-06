@@ -108,8 +108,8 @@ For each layout entry:
     - Matching order: exact `<title>.pdf`, then case-insensitive filename match, then fuzzy filename match.
   - **Index lookup second** (only if an index file exists at `--index`):
     - Exact match is case-insensitive.
-    - If exact fails, fuzzy match is attempted (token-set similarity with normalization: lowercase, punctuation removed, whitespace normalized).
-    - If a title exists in multiple PDFs, Tunery prefers the **same source PDF as the previous successful lookup** when possible; otherwise it prefers the source PDF that comes later in `index.json` (higher priority).
+    - If exact fails, fuzzy match is attempted (weighted ratio combining multiple strategies; normalization: lowercase, punctuation removed, whitespace normalized).
+    - If a title exists in multiple PDFs, Tunery uses the source PDF that comes later in `index.json` (higher priority).
 - If no match is found, Tunery prints a “not found … is this …?” hint (based on fuzzy matching) and skips the entry (render continues).
 
 ### Page numbering

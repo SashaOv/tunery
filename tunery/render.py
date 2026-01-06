@@ -499,7 +499,6 @@ def process_file_entry(
     combined_pdf: pikepdf.Pdf,
     index: Index | None = None,
     override_dir: Path | None = None,
-    preferred_source: Path | None = None,
     layout_path: Path | None = None,
 ) -> tuple[str, int, Path, str] | None:
     """
@@ -507,10 +506,11 @@ def process_file_entry(
 
     Returns: (title, page, source_path, status_message) or None if not found.
     Status message format examples:
-    - "found in \"The Real Book.Vol I\""
-    - "found in \"The Real Book.Vol I\" (fuzzy matching)"
-    - "found in ../../Handouts"
-    - "not found. Is this \"Sweet Georgia Bright\"?"
+    - "found    \"Country\" in \"The Real Book Vol I\""
+    - "matched  \"Feel Like Making Love\" with \"feel like makin' love\" from \"The Real Book Vol I\" (95%)"
+    - "found    \"Country\" in ../../Handouts"
+    - "matched  \"Country\" with \"Country Roads\" from ../../Handouts (92%)"
+    - "not found \"Country\". Is this \"Country Roads\" in \"The Real Book Vol I\"?"
     """
     # Determine the input PDF path and page/length
     input_pdf_path: Path | None = None
@@ -529,7 +529,7 @@ def process_file_entry(
         title = entry.title
         
         # Check override directory first if specified
-        override_fuzzy_score: float | None = None
+        override_fuzzy_match: tuple[str, float] | None = None  # (matched_filename, score)
         if override_dir and override_dir.exists():
             # Try exact match first
             override_file = override_dir / f"{title}.pdf"
@@ -568,8 +568,8 @@ def process_file_entry(
                         if matches:
                             matched_name, score, _ = matches[0]
                             override_file = file_map[matched_name]
-                            # Store score for status message
-                            override_fuzzy_score = score
+                            # Store matched filename and score for status message
+                            override_fuzzy_match = (override_file.stem, score)
                         else:
                             override_file = None
                     else:
@@ -594,8 +594,9 @@ def process_file_entry(
                     override_path = override_file.parent
                 
                 # Check if this was a fuzzy match
-                if override_fuzzy_score is not None:
-                    status = f'found    "{title}" in {override_path} (fuzzy score {override_fuzzy_score:.0f}%)'
+                if override_fuzzy_match is not None:
+                    matched_filename, score = override_fuzzy_match
+                    status = f'matched  "{title}" with "{matched_filename}" from {override_path} ({score:.0f}%)'
                 else:
                     status = f'found    "{title}" in {override_path}'
             else:
@@ -631,23 +632,9 @@ def process_file_entry(
                     print(f'{status}')
                     return None
 
-                # Try to find a match in the preferred source first
-                exact_match = False
-                if preferred_source:
-                    all_matches = index.lookup_all(title)
-                    preferred_match = next(
-                        (m for m in all_matches if Path(m.source_path).resolve() == preferred_source.resolve()),
-                        None
-                    )
-                    if preferred_match:
-                        location = preferred_match
-                        exact_match = True
-                    else:
-                        location = index.lookup(title)
-                        exact_match = location is not None
-                else:
-                    location = index.lookup(title)
-                    exact_match = location is not None
+                # Exact match (case-insensitive, highest priority wins)
+                location = index.lookup(title)
+                exact_match = location is not None
                 
                 # If exact match failed, try fuzzy matching
                 index_fuzzy_match_used: FuzzyMatch | None = None
@@ -681,7 +668,7 @@ def process_file_entry(
                 else:
                     # index_fuzzy_match_used was set earlier and is not None
                     assert index_fuzzy_match_used is not None
-                    status = f'found    "{title}" in "{source_name}" (fuzzy score {index_fuzzy_match_used.score:.0f}%)'
+                    status = f'matched  "{title}" with "{index_fuzzy_match_used.matched_title}" from "{source_name}" ({index_fuzzy_match_used.score:.0f}%)'
                 # Use entry's page/length if specified, otherwise use from index
                 page = entry.page if entry.page else location.page
                 length = entry.length if entry.length else location.length
@@ -693,23 +680,9 @@ def process_file_entry(
                     "Run 'tunery index <dir>' first."
                 )
 
-            # Try to find a match in the preferred source first
-            exact_match = False
-            if preferred_source:
-                all_matches = index.lookup_all(title)
-                preferred_match = next(
-                    (m for m in all_matches if Path(m.source_path).resolve() == preferred_source.resolve()),
-                    None
-                )
-                if preferred_match:
-                    location = preferred_match
-                    exact_match = True
-                else:
-                    location = index.lookup(title)
-                    exact_match = location is not None
-            else:
-                location = index.lookup(title)
-                exact_match = location is not None
+            # Exact match (case-insensitive, highest priority wins)
+            location = index.lookup(title)
+            exact_match = location is not None
             
             # If exact match failed, try fuzzy matching
             index_fuzzy_match: FuzzyMatch | None = None
@@ -743,7 +716,7 @@ def process_file_entry(
             else:
                 # index_fuzzy_match was set earlier and is not None
                 assert index_fuzzy_match is not None
-                status = f'found    "{title}" in "{source_name}" (fuzzy score {index_fuzzy_match.score:.0f}%)'
+                status = f'matched  "{title}" with "{index_fuzzy_match.matched_title}" from "{source_name}" ({index_fuzzy_match.score:.0f}%)'
             # Use entry's page/length if specified, otherwise use from index
             page = entry.page if entry.page else location.page
             length = entry.length if entry.length else location.length
@@ -818,7 +791,6 @@ def render(
     try:
         combined_pdf = pikepdf.Pdf.new()
         outline_items: list[pikepdf.OutlineItem] = []
-        last_source: Path | None = None  # Track the last used source file
 
         for record in layout_entries:
             if isinstance(record, SectionEntry):
@@ -828,7 +800,7 @@ def render(
 
                 for item in record.body:
                     result = process_file_entry(
-                        item, default_dir, combined_pdf, index, override_dir, last_source, layout_path
+                        item, default_dir, combined_pdf, index, override_dir, layout_path
                     )
                     if result is None:
                         # Tune not found - status was already printed in process_file_entry
@@ -838,8 +810,6 @@ def render(
                     if first_item_page is None:
                         first_item_page = item_page
                     children.append(pikepdf.OutlineItem(item_title, item_page))
-                    # Update last_source for next lookup
-                    last_source = item_source
 
                 # Create section outline item with children
                 section_item = pikepdf.OutlineItem(
@@ -849,15 +819,13 @@ def render(
                 outline_items.append(section_item)
             else:
                 # FileEntry - flat file entry
-                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, last_source, layout_path)
+                result = process_file_entry(record, default_dir, combined_pdf, index, override_dir, layout_path)
                 if result is None:
                     # Tune not found - status was already printed in process_file_entry
                     continue
                 title, page, source, status = result
                 print(f'{status}')
                 outline_items.append(pikepdf.OutlineItem(title, page))
-                # Update last_source for next entry
-                last_source = source
 
         # Add the outline to the combined PDF
         with combined_pdf.open_outline() as pdf_outline:

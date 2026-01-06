@@ -161,6 +161,10 @@ class Index:
         normalized = ' '.join(normalized.split())
         return normalized
 
+    def _strip_parenthetical(self, title: str) -> str:
+        """Strip parenthetical suffixes from a title, e.g., '(Oh, Where Can You Be?)'."""
+        return re.sub(r'\s*\([^)]*\)\s*$', '', title).strip()
+
     def lookup_fuzzy_edit_distance(
         self, title: str, score_cutoff: int = 90, limit: int = 5
     ) -> List[FuzzyMatch]:
@@ -187,16 +191,30 @@ class Index:
         # Normalize the search title
         normalized_search = self._normalize_title(title)
 
-        # Use rapidfuzz to find best matches
-        # We'll match against normalized titles but return original titles
-        title_map = {self._normalize_title(t): t for t in all_titles}
-        # Use token_set_ratio which handles missing/extra words (like articles) better
-        # This is important for cases like "Girl from Ipanema" vs "The Girl from Ipanema"
-        # token_set_ratio compares the sets of words, ignoring order and extra words
+        # Build mapping of normalized titles to original titles.
+        # Include both full titles and stripped versions (without parenthetical
+        # suffixes like "(Oh, Where Can You Be?)") so that "Lover Man" can match
+        # "Lover Man (Oh, Where Can You Be?)".
+        title_map: dict[str, str] = {}
+        for t in all_titles:
+            normalized = self._normalize_title(t)
+            title_map[normalized] = t
+            # Also add stripped version if different
+            stripped = self._strip_parenthetical(t)
+            if stripped != t:
+                stripped_normalized = self._normalize_title(stripped)
+                if stripped_normalized and stripped_normalized not in title_map:
+                    title_map[stripped_normalized] = t
+
+        # Use WRatio which combines multiple strategies (ratio, partial_ratio,
+        # token_sort_ratio, token_set_ratio) and picks the best one based on
+        # length differences. This handles articles ("The Girl from Ipanema" vs
+        # "Girl from Ipanema") while avoiding false matches where a short title
+        # like "L-O-V-E" matches anything containing "love".
         matches = process.extract(
             normalized_search,
             title_map.keys(),
-            scorer=fuzz.token_set_ratio,
+            scorer=fuzz.WRatio,
             score_cutoff=score_cutoff,
             limit=limit,
         )

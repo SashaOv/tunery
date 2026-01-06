@@ -123,3 +123,96 @@ def test_the_girl_from_ipanema_matches_without_the(tmp_path: Path) -> None:
         assert best_match.score >= 90, f"Expected score >= 90, got {best_match.score}"
         assert best_match.matched_title == "girl from ipanema"
         assert best_match.location.page == 100
+
+
+def test_feel_like_making_love_prefers_similar_title_over_substring(tmp_path: Path) -> None:
+    """
+    Test that 'Feel Like Making Love' matches 'Feel Like Makin' Love' over 'L-O-V-E'.
+    
+    This tests that fuzzy matching doesn't over-score short titles that happen
+    to be substrings. 'L-O-V-E' normalizes to 'love' which is contained in
+    'Feel Like Making Love', but 'Feel Like Makin' Love' is the correct match.
+    """
+    # Create index file with both titles
+    create_index_json(
+        tmp_path / "book.json",
+        entries=[
+            {"title": "L-O-V-E", "page": 50},
+            {"title": "Feel Like Makin' Love", "page": 100},
+            {"title": "Blue In Green", "page": 51},
+        ],
+    )
+    
+    # Create PDF file
+    create_pdf_file(tmp_path, "Book.pdf")
+    
+    # Create main index.json
+    create_main_index_json(
+        tmp_path / "index.json",
+        book_entries=[
+            {"source": "Book.pdf", "index": "book.json"},
+        ],
+    )
+
+    output_path = tmp_path / "index.sqlite"
+    with Index.build(tmp_path / "index.json", output_path) as index:
+        # Search for "Feel Like Making Love"
+        results = index.lookup_fuzzy_edit_distance("Feel Like Making Love", score_cutoff=80, limit=5)
+        
+        # Should find "Feel Like Makin' Love" as the best match
+        assert len(results) > 0, "Should find at least one match"
+        
+        best_match = results[0]
+        # matched_title is lowercase (stored that way in the DB)
+        assert best_match.matched_title == "feel like makin' love", \
+            f"Expected 'feel like makin' love' as best match, got '{best_match.matched_title}'"
+        assert best_match.location.page == 100
+        
+        # "L-O-V-E" should either not match at all (below cutoff) or score lower
+        love_matches = [r for r in results if r.matched_title == "love"]
+        if love_matches:
+            assert love_matches[0].score < best_match.score, \
+                f"'L-O-V-E' ({love_matches[0].score}) should score lower than 'Feel Like Makin Love' ({best_match.score})"
+
+
+def test_lover_man_matches_with_parenthetical_suffix(tmp_path: Path) -> None:
+    """
+    Test that 'Lover Man' matches 'Lover Man (Oh, Where Can You Be?)'.
+    
+    This tests that fuzzy matching can handle titles with parenthetical suffixes
+    by also matching against a stripped version of the title.
+    """
+    # Create index file with the full title including parenthetical
+    create_index_json(
+        tmp_path / "book.json",
+        entries=[
+            {"title": "Lover Man (Oh, Where Can You Be?)", "page": 100},
+            {"title": "Blue In Green", "page": 51},
+        ],
+    )
+    
+    # Create PDF file
+    create_pdf_file(tmp_path, "Book.pdf")
+    
+    # Create main index.json
+    create_main_index_json(
+        tmp_path / "index.json",
+        book_entries=[
+            {"source": "Book.pdf", "index": "book.json"},
+        ],
+    )
+
+    output_path = tmp_path / "index.sqlite"
+    with Index.build(tmp_path / "index.json", output_path) as index:
+        # Search for "Lover Man" (without parenthetical suffix)
+        results = index.lookup_fuzzy_edit_distance("Lover Man", score_cutoff=90, limit=5)
+        
+        # Should find "Lover Man (Oh, Where Can You Be?)"
+        assert len(results) > 0, "Should find at least one match"
+        
+        best_match = results[0]
+        # matched_title is lowercase (stored that way in the DB)
+        assert best_match.matched_title == "lover man (oh, where can you be?)", \
+            f"Expected 'lover man (oh, where can you be?)' as best match, got '{best_match.matched_title}'"
+        assert best_match.location.page == 100
+        assert best_match.score >= 90, f"Expected score >= 90, got {best_match.score}"
