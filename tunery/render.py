@@ -703,10 +703,10 @@ def process_file_entry(
                     source_name = Path(hint_match.location.source_path).stem
                     fuzzy_hints.append(f'"{matched_title}" in "{source_name}"')
                 
-                    status = f'not found "{title}"'
-                    if fuzzy_hints:
-                        status += f'. Is this {fuzzy_hints[0]}?'
-                    print(f'{status}')
+                status = f'not found "{title}"'
+                if fuzzy_hints:
+                    status += f'. Is this {fuzzy_hints[0]}?'
+                print(f'{status}')
                 return None
 
             input_pdf_path = Path(location.source_path)
