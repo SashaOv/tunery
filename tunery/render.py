@@ -862,3 +862,75 @@ def render(
         if index:
             index.close()
 
+
+def lookup_and_extract(
+    title: str,
+    output: Path | None,
+    index_path: Path,
+) -> None:
+    """
+    Look up a title in the index and extract to PDF.
+
+    If multiple matches are found, lists them and exits without extraction.
+    If a single match is found, extracts the pages to the output PDF.
+
+    Args:
+        title: The title (or part of title) to search for.
+        output: Output path - if file, use as-is; if directory, save <title>.pdf there;
+                if None, save <title>.pdf in current directory.
+        index_path: Path to the SQLite index file.
+    """
+    if not index_path.exists():
+        print(f"Index not found: {index_path}")
+        print("Run 'tunery index <index.json>' first to build the index.")
+        return
+
+    with Index(index_path) as index:
+        # First try exact match
+        exact_location = index.lookup(title)
+        if exact_location:
+            # Single exact match - extract it
+            matched_title = title
+            location = exact_location
+        else:
+            # Try fuzzy matching
+            matches = index.lookup_fuzzy_edit_distance(title, score_cutoff=70, limit=10)
+
+            if not matches:
+                print(f'No matches found for "{title}"')
+                return
+
+            if len(matches) > 1:
+                # Multiple matches - list them and exit
+                print(f'Found {len(matches)} matches for "{title}":')
+                for i, match in enumerate(matches, 1):
+                    source_name = Path(match.location.source_path).stem
+                    pages_str = f"{match.location.length} page" if match.location.length == 1 else f"{match.location.length} pages"
+                    print(f'  {i}. "{match.matched_title}" in "{source_name}" (page {match.location.page}, {pages_str}) - {match.score:.0f}%')
+                print("Run again with exact title to extract.")
+                return
+
+            # Single fuzzy match
+            matched_title = matches[0].matched_title
+            location = matches[0].location
+
+        # Determine output path
+        if output is None:
+            output_path = Path(f"{matched_title}.pdf")
+        elif output.is_dir():
+            output_path = output / f"{matched_title}.pdf"
+        else:
+            output_path = output
+
+        # Extract pages
+        source_name = Path(location.source_path).stem
+        pages_str = f"{location.length} page" if location.length == 1 else f"{location.length} pages"
+        print(f'Found "{matched_title}" in "{source_name}" (page {location.page}, {pages_str})')
+
+        combined_pdf = pikepdf.Pdf.new()
+        copy_pages(combined_pdf, location.source_path, location.page, location.length)
+        combined_pdf.save(str(output_path))
+        combined_pdf.close()
+
+        print(f"Extracted to: {output_path}")
+

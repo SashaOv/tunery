@@ -16,11 +16,13 @@
 - Favor using types from `typing` package.
 - Favor using @dataclass or Pydantic models instead of dictionaries.
 - Prefer canonic Python file structure: imports -> variables and classes -> functions.
+- Put imports at the beginning of file, unless is necessary by the logic.
 
 ## Testing Guidelines
+- When fixing a bug, start by implementing a test case that reproduces the bug and make sure it fails. Then fix and make sure the test passes.
 - Write pytest functions named `test_<behavior>` inside files that mirror the module under test; parameterize when covering multiple layout shapes.
 - Use tiny synthetic PDFs checked into `tests/fixtures/` or generate them on the fly to avoid large binaries; clean up temporary outputs in `tmp_path`.
-- Aim for coverage around edge cases: partial page ranges (`page`/`length`), nested sections, and invalid YAML entries.
+- Aim for coverage around edge cases, for example: partial page ranges (`page`/`length`), nested sections, and invalid YAML entries.
 
 ## Commit & Pull Request Guidelines
 - Follow the existing imperative, present-tense commit style (`Change build system to UV`, `Fix build name`); keep subject lines under ~60 characters and explain motivation plus impact in the body when needed.

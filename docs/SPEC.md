@@ -15,6 +15,9 @@ Commands:
   - `-o/--output`: default is `<layout_basename>.pdf` next to the YAML.
   - `--index`: path to SQLite index (default `~/.cache/tunery/index.sqlite`). If missing/unavailable, title-based lookups can still succeed via overrides.
   - `--override`: directory with PDFs that should take precedence for `title:` lookups.
+- **lookup** `TITLE_PART` - lookup a title in the index and if found, 
+  generate a single PDF with the title (as found in the source).
+  - `-o/--output`: if file, use this file path, if directory, put `<found_title>.pdf` in that directory, default is `<layout_basename>.pdf` in current directory.
 
 ## Configuration / Inputs
 

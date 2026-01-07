@@ -52,6 +52,27 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         help="Override directory: if <title>.pdf exists here, use it instead of index lookup",
     )
 
+    # Lookup command: tunery lookup <title> [-o output.pdf] [--index <path>]
+    lookup_parser = subparsers.add_parser(
+        "lookup", help="Look up a title in the index and extract to PDF"
+    )
+    lookup_parser.add_argument(
+        "title", type=str, help="Title (or part of title) to search for"
+    )
+    lookup_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output path: if file, use as-is; if directory, save <title>.pdf there; default: <title>.pdf in cwd",
+    )
+    lookup_parser.add_argument(
+        "--index",
+        type=Path,
+        default=DEFAULT_INDEX_PATH,
+        help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
+    )
+
     return parser.parse_args(args)
 
 
@@ -68,6 +89,12 @@ def cmd_render(args: argparse.Namespace) -> None:
     render(args.layout, output_path, args.index, args.override)
 
 
+def cmd_lookup(args: argparse.Namespace) -> None:
+    """Handle the 'lookup' subcommand."""
+    from tunery.render import lookup_and_extract
+    lookup_and_extract(args.title, args.output, args.index)
+
+
 def main(args: Sequence[str] | None = None) -> None:
     parsed = parse_args(args)
 
@@ -75,6 +102,8 @@ def main(args: Sequence[str] | None = None) -> None:
         cmd_index(parsed)
     elif parsed.command == "render":
         cmd_render(parsed)
+    elif parsed.command == "lookup":
+        cmd_lookup(parsed)
 
 
 if __name__ == "__main__":

@@ -501,3 +501,151 @@ def test_process_file_entry_returns_not_found_result(tmp_path: Path) -> None:
     assert isinstance(result, NotFoundResult)
     assert result.title == "Missing Song"
     assert 'not found "Missing Song"' in result.format()
+
+
+def test_lookup_and_extract_single_match(tmp_path: Path, capsys) -> None:
+    """Test lookup_and_extract with a single matching title."""
+    from tunery.render import lookup_and_extract
+
+    # Create a source PDF
+    source_dir = tmp_path / "books"
+    source_dir.mkdir()
+    source_pdf = create_pdf(source_dir / "RealBook.pdf", 5)
+
+    # Create index
+    write_json(
+        tmp_path / "book.json",
+        [
+            {"title": "Autumn Leaves", "page": 2, "pages": 2},
+            {"title": "Blue In Green", "page": 4, "pages": 1},
+        ],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [{"source": "books/RealBook.pdf", "index": "book.json"}],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    # Run lookup with exact title
+    output_path = tmp_path / "output.pdf"
+    lookup_and_extract("Autumn Leaves", output_path, index_path)
+
+    # Check output
+    captured = capsys.readouterr()
+    assert 'Found "Autumn Leaves"' in captured.out
+    assert "Extracted to:" in captured.out
+
+    # Check the PDF was created with correct number of pages
+    assert output_path.exists()
+    with pikepdf.Pdf.open(output_path) as pdf:
+        assert len(pdf.pages) == 2
+
+
+def test_lookup_and_extract_multiple_matches(tmp_path: Path, capsys) -> None:
+    """Test lookup_and_extract lists multiple matches without extracting."""
+    from tunery.render import lookup_and_extract
+
+    # Create a source PDF
+    source_dir = tmp_path / "books"
+    source_dir.mkdir()
+    create_pdf(source_dir / "RealBook.pdf", 10)
+
+    # Create index with similar titles
+    write_json(
+        tmp_path / "book.json",
+        [
+            {"title": "Blue In Green", "page": 1, "pages": 1},
+            {"title": "Blue Monk", "page": 3, "pages": 2},
+            {"title": "Blue Train", "page": 5, "pages": 1},
+        ],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [{"source": "books/RealBook.pdf", "index": "book.json"}],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    # Run lookup with partial title that matches multiple
+    output_path = tmp_path / "output.pdf"
+    lookup_and_extract("Blue", output_path, index_path)
+
+    # Check output lists matches
+    captured = capsys.readouterr()
+    assert "Found 3 matches" in captured.out
+    assert "blue in green" in captured.out
+    assert "blue monk" in captured.out
+    assert "blue train" in captured.out
+    assert "Run again with exact title to extract" in captured.out
+
+    # No PDF should be created
+    assert not output_path.exists()
+
+
+def test_lookup_and_extract_no_matches(tmp_path: Path, capsys) -> None:
+    """Test lookup_and_extract with no matching title."""
+    from tunery.render import lookup_and_extract
+
+    # Create a source PDF
+    source_dir = tmp_path / "books"
+    source_dir.mkdir()
+    create_pdf(source_dir / "RealBook.pdf", 3)
+
+    # Create index
+    write_json(
+        tmp_path / "book.json",
+        [{"title": "Autumn Leaves", "page": 1, "pages": 1}],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [{"source": "books/RealBook.pdf", "index": "book.json"}],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    # Run lookup with non-existent title
+    output_path = tmp_path / "output.pdf"
+    lookup_and_extract("Nonexistent Song", output_path, index_path)
+
+    # Check output
+    captured = capsys.readouterr()
+    assert 'No matches found for "Nonexistent Song"' in captured.out
+
+    # No PDF should be created
+    assert not output_path.exists()
+
+
+def test_lookup_and_extract_output_directory(tmp_path: Path, capsys) -> None:
+    """Test lookup_and_extract with output as directory."""
+    from tunery.render import lookup_and_extract
+
+    # Create a source PDF
+    source_dir = tmp_path / "books"
+    source_dir.mkdir()
+    create_pdf(source_dir / "RealBook.pdf", 3)
+
+    # Create index
+    write_json(
+        tmp_path / "book.json",
+        [{"title": "Autumn Leaves", "page": 1, "pages": 2}],
+    )
+    write_json(
+        tmp_path / "index.json",
+        [{"source": "books/RealBook.pdf", "index": "book.json"}],
+    )
+    index_path = tmp_path / "index.sqlite"
+    Index.build(tmp_path / "index.json", index_path).close()
+
+    # Create output directory
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # Run lookup with directory as output
+    lookup_and_extract("Autumn Leaves", output_dir, index_path)
+
+    # Check the PDF was created in the directory with matched title
+    expected_path = output_dir / "autumn leaves.pdf"
+    assert expected_path.exists()
+    with pikepdf.Pdf.open(expected_path) as pdf:
+        assert len(pdf.pages) == 2
