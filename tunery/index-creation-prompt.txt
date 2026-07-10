@@ -1,0 +1,12 @@
+This is an index of a book of jazz tunes. Could you convert it to a json format with the following schema:
+
+```
+class IndexEntry(BaseModel):
+    """A single entry in a JSON index file."""
+
+    title: str
+    page: PositiveInt
+    pages: PositiveInt = 1  # Number of pages, defaults to 1
+```
+
+If the number of pages is 1, do not put it

@@ -1,109 +1,86 @@
 """Tunery CLI - Build PDF setbooks from sheet music collections."""
 
-import argparse
 from pathlib import Path
-from typing import Sequence
+from typing import Annotated, Sequence
+
+from cyclopts import App, Parameter
 
 from tunery.index import Index
-from tunery.render import render
+from tunery.render import render, lookup_and_extract
+
 
 
 DEFAULT_INDEX_PATH = Path.home() / ".cache" / "tunery" / "index.sqlite"
+app = App(help="Tunery: Build PDF setbooks from sheet music collections")
 
 
-def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Tunery: Build PDF setbooks from sheet music collections"
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # Index command: tunery index <index.json>
-    index_parser = subparsers.add_parser(
-        "index", help="Build index from the JSON file"
-    )
-    index_parser.add_argument(
-        "index_json", type=Path, help="Path to the main index.json file"
-    )
-
-    # Render command: tunery render <layout.yaml> [-o output.pdf] [--index <path>]
-    render_parser = subparsers.add_parser(
-        "render", help="Render a PDF setbook from a YAML layout file"
-    )
-    render_parser.add_argument(
-        "layout", type=Path, help="Path to the input YAML layout file"
-    )
-    render_parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="Path to the output PDF file (default: <input_base>.pdf)",
-    )
-    render_parser.add_argument(
-        "--index",
-        type=Path,
-        default=DEFAULT_INDEX_PATH,
-        help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
-    )
-    render_parser.add_argument(
-        "--override",
-        type=Path,
-        default=None,
-        help="Override directory: if <title>.pdf exists here, use it instead of index lookup",
-    )
-
-    # Lookup command: tunery lookup <title> [-o output.pdf] [--index <path>]
-    lookup_parser = subparsers.add_parser(
-        "lookup", help="Look up a title in the index and extract to PDF"
-    )
-    lookup_parser.add_argument(
-        "title", type=str, help="Title (or part of title) to search for"
-    )
-    lookup_parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="Output path: if file, use as-is; if directory, save <title>.pdf there; default: <title>.pdf in cwd",
-    )
-    lookup_parser.add_argument(
-        "--index",
-        type=Path,
-        default=DEFAULT_INDEX_PATH,
-        help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
-    )
-
-    return parser.parse_args(args)
+@app.command(name="index")
+def build_index(
+    index_json: Annotated[Path, Parameter(help="Path to the main index.json file")],
+) -> None:
+    """Build index from the JSON file."""
+    Index.build(index_json, DEFAULT_INDEX_PATH)
 
 
-def cmd_index(args: argparse.Namespace) -> None:
-    """Handle the 'index' subcommand."""
-    Index.build(args.index_json, DEFAULT_INDEX_PATH)
+@app.command(name="render")
+def render_command(
+    layout: Annotated[Path, Parameter(help="Path to the input YAML layout file")],
+    output: Annotated[
+        Path | None,
+        Parameter(
+            ["--output", "-o"],
+            help="Path to the output PDF file (default: <input_base>.pdf)",
+        ),
+    ] = None,
+    index: Annotated[
+        Path,
+        Parameter(
+            "--index",
+            help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
+        ),
+    ] = DEFAULT_INDEX_PATH,
+    override: Annotated[
+        Path | None,
+        Parameter(
+            "--override",
+            help="Override directory: if <title>.pdf exists here, use it instead of index lookup",
+        ),
+    ] = None,
+) -> None:
+    """Render a PDF setbook from a YAML layout file."""
+    output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
+    render(layout, output_path, index, override)
 
 
-def cmd_render(args: argparse.Namespace) -> None:
-    """Handle the 'render' subcommand."""
-    output_path = (
-        args.output if args.output else args.layout.with_name(f"{args.layout.stem}.pdf")
-    )
-    render(args.layout, output_path, args.index, args.override)
+@app.command(name="lookup")
+def lookup_command(
+    title: Annotated[
+        list[str],
+        Parameter(help="One or more titles (or partial titles) to search for"),
+    ],
+    output: Annotated[
+        Path | None,
+        Parameter(
+            ["--output", "-o"],
+            help="Output path: if file, use as-is; if directory, save <title>.pdf there; default: <title>.pdf in cwd",
+        ),
+    ] = None,
+    index: Annotated[
+        Path,
+        Parameter(
+            "--index",
+            help=f"Path to the index SQLite file (default: {DEFAULT_INDEX_PATH})",
+        ),
+    ] = DEFAULT_INDEX_PATH,
+) -> None:
+    """Look up titles in the index and extract them to PDF."""
 
-
-def cmd_lookup(args: argparse.Namespace) -> None:
-    """Handle the 'lookup' subcommand."""
-    from tunery.render import lookup_and_extract
-    lookup_and_extract(args.title, args.output, args.index)
+    for item in title:
+        lookup_and_extract(item, output, index)
 
 
 def main(args: Sequence[str] | None = None) -> None:
-    parsed = parse_args(args)
-
-    if parsed.command == "index":
-        cmd_index(parsed)
-    elif parsed.command == "render":
-        cmd_render(parsed)
-    elif parsed.command == "lookup":
-        cmd_lookup(parsed)
+    app(args, result_action="return_value")
 
 
 if __name__ == "__main__":

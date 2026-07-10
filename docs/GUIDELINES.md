@@ -16,7 +16,6 @@
 - Favor using types from `typing` package.
 - Favor using @dataclass or Pydantic models instead of dictionaries.
 - Prefer canonic Python file structure: imports -> variables and classes -> functions.
-- Put imports at the beginning of file, unless is necessary by the logic.
 
 ## Testing Guidelines
 - When fixing a bug, start by implementing a test case that reproduces the bug and make sure it fails. Then fix and make sure the test passes.

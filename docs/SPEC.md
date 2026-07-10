@@ -6,6 +6,8 @@
 ## Deployable
 `tunery` — CLI
 
+`tunery` — Python package API
+
 Usage: `tunery COMMAND ...`
 
 Commands:
@@ -18,6 +20,13 @@ Commands:
 - **lookup** `TITLE_PART` - lookup a title in the index and if found, 
   generate a single PDF with the title (as found in the source).
   - `-o/--output`: if file, use this file path, if directory, put `<found_title>.pdf` in that directory, default is `<layout_basename>.pdf` in current directory.
+
+Python API:
+- Import `Composer` from the package root: `from tunery import Composer`.
+- Construct `Composer(output_path)` to create a programmatic setbook builder.
+- Call `add(title, source, start=None, pages=None)` to append pages from an explicit PDF source. `start` uses the same page-numbering behavior as layout `page`; `pages` uses the same behavior as layout `length`. If both are omitted, include the whole PDF.
+- Call `start_section(title)` and `end_section()` to group subsequent additions under nested outline bookmarks.
+- Save the output PDF after additions and section changes. Use `close()` or a context manager to release the underlying PDF object.
 
 ## Configuration / Inputs
 

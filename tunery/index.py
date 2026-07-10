@@ -1,14 +1,14 @@
 """Index module for building and querying the chart index SQLite database."""
 
 import json
-import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
 from pydantic import BaseModel, PositiveInt
-from rapidfuzz import fuzz, process
+
+from tunery.fuzzy_index import FuzzyIndex, title_variants
 
 
 class IndexEntry(BaseModel):
@@ -47,7 +47,7 @@ class ChartLocation:
 
 
 @dataclass
-class FuzzyMatch:
+class ChartMatch:
     """Result of a fuzzy chart lookup with similarity score."""
 
     location: ChartLocation
@@ -151,23 +151,9 @@ class Index:
         rows = cursor.fetchall()
         return [ChartLocation(source_path=r[0], page=r[1], length=r[2]) for r in rows]
 
-    def _normalize_title(self, title: str) -> str:
-        """Normalize a title for fuzzy matching: lowercase, remove punctuation, normalize whitespace."""
-        # Convert to lowercase
-        normalized = title.lower()
-        # Remove punctuation except spaces
-        normalized = re.sub(r'[^\w\s]', '', normalized)
-        # Normalize whitespace
-        normalized = ' '.join(normalized.split())
-        return normalized
-
-    def _strip_parenthetical(self, title: str) -> str:
-        """Strip parenthetical suffixes from a title, e.g., '(Oh, Where Can You Be?)'."""
-        return re.sub(r'\s*\([^)]*\)\s*$', '', title).strip()
-
     def lookup_fuzzy_edit_distance(
         self, title: str, score_cutoff: int = 90, limit: int = 5
-    ) -> List[FuzzyMatch]:
+    ) -> List[ChartMatch]:
         """
         Look up charts using fuzzy string matching with edit distance.
         Returns matches with similarity scores and matched titles.
@@ -178,7 +164,7 @@ class Index:
             limit: Maximum number of results to return. Default 5.
 
         Returns:
-            List of FuzzyMatch objects, sorted by score (highest first).
+            List of ChartMatch objects, sorted by score (highest first).
         """
         cursor = self._get_connection().cursor()
         # Get all titles from the database
@@ -188,43 +174,31 @@ class Index:
         if not all_titles:
             return []
 
-        # Normalize the search title
-        normalized_search = self._normalize_title(title)
-
-        # Build mapping of normalized titles to original titles.
+        # Build a fuzzy index of titles and their searchable variants.
         # Include both full titles and stripped versions (without parenthetical
         # suffixes like "(Oh, Where Can You Be?)") so that "Lover Man" can match
         # "Lover Man (Oh, Where Can You Be?)".
-        title_map: dict[str, str] = {}
+        title_index = FuzzyIndex[str](variants=title_variants)
         for t in all_titles:
-            normalized = self._normalize_title(t)
-            title_map[normalized] = t
-            # Also add stripped version if different
-            stripped = self._strip_parenthetical(t)
-            if stripped != t:
-                stripped_normalized = self._normalize_title(stripped)
-                if stripped_normalized and stripped_normalized not in title_map:
-                    title_map[stripped_normalized] = t
+            title_index.add(t, t)
 
         # Use WRatio which combines multiple strategies (ratio, partial_ratio,
         # token_sort_ratio, token_set_ratio) and picks the best one based on
         # length differences. This handles articles ("The Girl from Ipanema" vs
         # "Girl from Ipanema") while avoiding false matches where a short title
         # like "L-O-V-E" matches anything containing "love".
-        matches = process.extract(
-            normalized_search,
-            title_map.keys(),
-            scorer=fuzz.WRatio,
+        matches = title_index.match(
+            title,
             score_cutoff=score_cutoff,
             limit=limit,
         )
 
         # For each match, get all chart locations with that title
-        results: List[FuzzyMatch] = []
+        results: List[ChartMatch] = []
         seen_locations: set[tuple[str, int]] = set()  # (source_path, page) to avoid duplicates
 
-        for matched_title_norm, score, _ in matches:
-            original_title = title_map[matched_title_norm]
+        for match in matches:
+            original_title = match.item
             cursor.execute(
                 "SELECT source_path, page, length FROM charts WHERE title = ? ORDER BY priority DESC",
                 (original_title,),
@@ -235,9 +209,9 @@ class Index:
                 if location_key not in seen_locations:
                     seen_locations.add(location_key)
                     results.append(
-                        FuzzyMatch(
+                        ChartMatch(
                             location=ChartLocation(source_path=row[0], page=row[1], length=row[2]),
-                            score=score,
+                            score=match.score,
                             matched_title=original_title,
                         )
                     )
@@ -384,4 +358,3 @@ class Index:
                 print(f"  - {title} ({count} instances)")
 
         return cls(output_path)
-

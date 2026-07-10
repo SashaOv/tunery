@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tunery.index import ChartLocation, FuzzyMatch, Index
+from tunery.index import Index
 
 
 def create_index_json(path: Path, entries: list[dict]) -> Path:

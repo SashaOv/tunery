@@ -5,8 +5,9 @@ import pikepdf
 import pytest
 import yaml
 
-from tunery.render import render, copy_pages, get_page_label_to_index_map
+from tunery.composer import copy_pages, get_page_label_to_index_map
 from tunery.index import Index
+from tunery.render import render
 
 
 def create_pdf(path: Path, page_count: int) -> Path:
@@ -477,25 +478,25 @@ def test_bind_pdf_handles_nested_sections(tmp_path: Path) -> None:
 
 def test_process_file_entry_returns_not_found_result(tmp_path: Path) -> None:
     """Test that process_file_entry returns NotFoundResult for missing titles."""
+    from tunery.composer import Composer
     from tunery.render import process_file_entry, FileEntry, NotFoundResult
 
     layout_dir = tmp_path / "setlist"
     layout_dir.mkdir()
 
-    # Create a combined PDF to pass to the function
-    combined_pdf = pikepdf.Pdf.new()
-
     # Create a FileEntry for a title that doesn't exist
     entry = FileEntry(title="Missing Song")
+    composer = Composer(tmp_path / "combined.pdf", autosave=False)
 
     result = process_file_entry(
         entry,
         default_dir=layout_dir,
-        combined_pdf=combined_pdf,
+        composer=composer,
         index=None,
         override_dir=layout_dir,
         layout_path=None,
     )
+    composer.close()
 
     # Should return NotFoundResult
     assert isinstance(result, NotFoundResult)
