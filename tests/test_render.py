@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from tunery.composer import copy_pages, get_page_label_to_index_map
-from tunery.render import render
+from tunery.render import render, resolve_path
 
 
 def create_pdf(path: Path, page_count: int) -> Path:
@@ -698,6 +698,56 @@ def test_render_resolves_relative_file_through_symlinked_parent(
     output_path = tmp_path / "setbook.pdf"
 
     render(layout_path, output_path)
+
+    with pikepdf.Pdf.open(output_path) as pdf:
+        assert len(pdf.pages) == 1
+
+
+def test_resolve_path_uses_logical_cwd_across_symlinked_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After cd through a symlink, `..` must climb the logical path, not getcwd()."""
+    real_gdrive = tmp_path / "real-gdrive"
+    (real_gdrive / "Shows" / "gig").mkdir(parents=True)
+    project = tmp_path / "project"
+    vault = project / "Vault"
+    vault.mkdir(parents=True)
+    chart = vault / "chart.pdf"
+    chart.write_bytes(b"%PDF")
+    linked_gdrive = project / "GDrive"
+    linked_gdrive.symlink_to(real_gdrive, target_is_directory=True)
+    gig_dir = linked_gdrive / "Shows" / "gig"
+
+    monkeypatch.chdir(gig_dir)
+    monkeypatch.setenv("PWD", str(gig_dir))
+
+    resolved = resolve_path("../../../Vault/chart.pdf", Path("."))
+    assert resolved == chart
+    assert resolved.exists()
+
+
+def test_render_resolves_relative_file_from_symlinked_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Render from a layout relative to a cwd reached through a symlink."""
+    real_gdrive = tmp_path / "real-gdrive"
+    (real_gdrive / "Shows" / "gig").mkdir(parents=True)
+    project = tmp_path / "project"
+    project.mkdir()
+    real_vault = tmp_path / "real-vault"
+    create_pdf(real_vault / "chart.pdf", 1)
+    vault = project / "Vault"
+    vault.symlink_to(real_vault, target_is_directory=True)
+    linked_gdrive = project / "GDrive"
+    linked_gdrive.symlink_to(real_gdrive, target_is_directory=True)
+    gig_dir = linked_gdrive / "Shows" / "gig"
+    write_layout(gig_dir / "gig.yaml", [{"file": "../../../Vault/chart.pdf"}])
+
+    monkeypatch.chdir(gig_dir)
+    monkeypatch.setenv("PWD", str(gig_dir))
+    output_path = tmp_path / "setbook.pdf"
+
+    render(Path("gig.yaml"), output_path)
 
     with pikepdf.Pdf.open(output_path) as pdf:
         assert len(pdf.pages) == 1

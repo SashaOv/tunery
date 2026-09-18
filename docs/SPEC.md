@@ -198,7 +198,12 @@ For `title:` entries and the `lookup` command:
 
 For `file:` entries, search directory libraries in the same priority order.
 Indexed PDF libraries do not participate in file lookup. If no directory
-library resolves the file, resolve it relative to the layout.
+library resolves the file, resolve it relative to the layout. Collapse `.`
+and `..` lexically without dereferencing intermediate symlinks, so a layout
+reached through a symlink (for example `GDrive` → a cloud folder) still
+climbs to siblings such as `Vault`. When the layout path is relative, join it
+to the logical working directory (`$PWD` when it names the current directory)
+rather than the physical `getcwd()` path.
 
 Directory title lookup considers PDFs directly inside the library directory.
 Indexed PDF lookup preserves the indexed page range and adds the library

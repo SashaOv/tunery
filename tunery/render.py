@@ -53,6 +53,31 @@ class Layout(RootModel[List[ConfigEntry | SectionEntry | FileEntry]]):
     pass
 
 
+def logical_cwd() -> Path:
+    """Working directory without resolving symlinks.
+
+    After `cd` through a symlink, `os.getcwd()` / `Path.cwd()` return the
+    physical target. POSIX shells keep the logical path in `$PWD`; use that
+    when it still names the current directory.
+    """
+    pwd = os.environ.get("PWD")
+    if pwd:
+        logical = Path(pwd)
+        try:
+            if logical.samefile("."):
+                return logical
+        except OSError:
+            pass
+    return Path.cwd()
+
+
+def lexical_absolute(path: Path) -> Path:
+    """Absolute path with `.`/`..` collapsed and intermediate symlinks kept."""
+    if not path.is_absolute():
+        path = logical_cwd() / path
+    return Path(os.path.normpath(path))
+
+
 def resolve_path(path_str: str, base_dir: Path) -> Path:
     """
     Resolve a file path relative to base_dir if it's relative, otherwise return as-is.
@@ -63,7 +88,7 @@ def resolve_path(path_str: str, base_dir: Path) -> Path:
     path = Path(path_str)
     if path.is_absolute():
         return path
-    return Path(os.path.abspath(base_dir / path))
+    return lexical_absolute(base_dir / path)
 
 
 @dataclass
@@ -210,7 +235,7 @@ def render(
         else:
             layout_entries.append(record)
 
-    default_dir = Path(os.path.abspath(layout_path.parent))
+    default_dir = lexical_absolute(layout_path.parent)
 
     def process_items(items: list[SectionEntry | FileEntry]) -> None:
         """Process layout items recursively."""
