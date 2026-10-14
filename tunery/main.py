@@ -21,10 +21,17 @@ def render_command(
             help="Path to the output PDF file (default: <input_base>.pdf)",
         ),
     ] = None,
+    keys: Annotated[
+        list[str],
+        Parameter(
+            ["--keys", "-k"],
+            help="Target key. C or omitted renders $stem.pdf; other keys render $stem.$key.pdf.",
+        ),
+    ] = [],
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
-    render(layout, output_path)
+    render(layout, output_path, keys)
 
 
 @app.command(name="lookup")

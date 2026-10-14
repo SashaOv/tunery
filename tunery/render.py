@@ -9,6 +9,13 @@ import yaml
 from pydantic import BaseModel, Field, PositiveInt, RootModel, ValidationError
 
 from tunery.composer import Composer
+from tunery.keys import (
+    CONCERT_KEY,
+    expand_keys,
+    is_concert,
+    keyed_filename,
+    output_path_for_key,
+)
 from tunery.library import (
     LibraryCollection,
     LibraryRecord,
@@ -138,28 +145,70 @@ class SuccessResult(ProcessEntryResult):
             return f'found    "{self.title}" in {location}'
 
 
+def display_title(
+    explicit: str | None, resolved: Path, key: str | None
+) -> str:
+    """Display title for an entry, without any key edition suffix."""
+    if explicit:
+        return explicit
+    stem = resolved.stem
+    if key is not None:
+        suffix = f".{key}" if not is_concert(key) else ".Concert"
+        if stem.lower().endswith(suffix.lower()):
+            return stem[: -len(suffix)]
+    return stem
+
+
 def process_file_entry(
     entry: FileEntry,
     default_dir: Path,
     composer: Composer,
     libraries: LibraryCollection | None = None,
+    key: str = CONCERT_KEY,
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
 
     Returns: SuccessResult on success, NotFoundResult if title not found
-             (both subclasses of ProcessEntryResult).
+              (both subclasses of ProcessEntryResult).
     """
     matched_title: str | None = None
     score: float | None = None
-    if entry.file:
-        library_match = libraries.lookup_file(entry.file) if libraries else None
-        input_pdf_path = (
-            library_match.source
-            if library_match is not None
-            else resolve_path(entry.file, default_dir)
+    # `file:` entries with explicit page selections address the named PDF
+    # directly and skip key edition handling; everything else resolves the
+    # per-key edition source.
+    lookup_key = (
+        key
+        if not (
+            entry.file and (entry.page is not None or entry.length is not None)
         )
-        title = entry.title if entry.title else input_pdf_path.stem
+        else None
+    )
+    if entry.file:
+        library_match = (
+            libraries.lookup_file(entry.file, lookup_key) if libraries else None
+        )
+        if library_match is not None:
+            input_pdf_path = library_match.source
+        else:
+            keyed = (
+                keyed_filename(entry.file, lookup_key)
+                if lookup_key is not None
+                else None
+            )
+            if keyed is not None:
+                keyed_path = resolve_path(keyed, default_dir)
+                if keyed_path.is_file():
+                    input_pdf_path = keyed_path
+                elif lookup_key is not None and is_concert(lookup_key):
+                    input_pdf_path = resolve_path(entry.file, default_dir)
+                else:
+                    return NotFoundResult(
+                        title=entry.title or Path(entry.file).stem
+                    )
+            else:
+                input_pdf_path = resolve_path(entry.file, default_dir)
+        title = display_title(entry.title, input_pdf_path, lookup_key)
         page = entry.page
         length = entry.length
     else:
@@ -167,7 +216,9 @@ def process_file_entry(
             raise ValueError("Entry must have either 'file' or 'title'")
 
         title = entry.title
-        library_match = libraries.lookup_title(title) if libraries else None
+        library_match = (
+            libraries.lookup_title(title, lookup_key) if libraries else None
+        )
         if library_match is not None:
             input_pdf_path = library_match.source
             page = entry.page if entry.page is not None else library_match.page
@@ -198,11 +249,44 @@ def process_file_entry(
     )
 
 
+def process_items(
+    items: list[SectionEntry | FileEntry],
+    default_dir: Path,
+    composer: Composer,
+    libraries: LibraryCollection,
+    key: str,
+    show_key: bool,
+) -> None:
+    """Process layout items recursively for one key edition."""
+    for item in items:
+        if isinstance(item, SectionEntry):
+            composer.start_section(item.section)
+            process_items(item.body, default_dir, composer, libraries, key, show_key)
+            composer.end_section()
+        else:
+            result = process_file_entry(
+                item,
+                default_dir,
+                composer,
+                libraries,
+                key,
+            )
+            if show_key:
+                print(f"[{key}] {result.format()}")
+            else:
+                print(result.format())
+
+
 def render(
     layout_path: Path,
     output: Path,
+    keys: list[str] | None = None,
 ) -> None:
-    """Combine PDFs according to the YAML layout file."""
+    """Combine PDFs according to the YAML layout file.
+
+    Renders one setbook per key edition: the concert edition uses `output`
+    as-is, other keys use `<stem>.<Key>.pdf` siblings.
+    """
     try:
         with open(str(layout_path), "r") as file:
             file_content = file.read()
@@ -225,6 +309,8 @@ def render(
         error_msg = f"Validation error in {layout_path}:\n{e}"
         raise ValueError(error_msg) from e
 
+    key_list = expand_keys(list(keys) if keys else [])
+
     libraries = load_project_libraries(layout_path.parent)
 
     layout_entries: list[SectionEntry | FileEntry] = []
@@ -236,26 +322,15 @@ def render(
             layout_entries.append(record)
 
     default_dir = lexical_absolute(layout_path.parent)
+    show_key = len(key_list) > 1
 
-    def process_items(items: list[SectionEntry | FileEntry]) -> None:
-        """Process layout items recursively."""
-        for item in items:
-            if isinstance(item, SectionEntry):
-                composer.start_section(item.section)
-                process_items(item.body)
-                composer.end_section()
-            else:
-                result = process_file_entry(
-                    item,
-                    default_dir,
-                    composer,
-                    libraries,
-                )
-                print(result.format())
-
-    with Composer(output, autosave=False) as composer:
-        process_items(layout_entries)
-        composer.save()
+    for key in key_list:
+        key_output = output_path_for_key(output, key)
+        with Composer(key_output, autosave=False) as composer:
+            process_items(
+                layout_entries, default_dir, composer, libraries, key, show_key
+            )
+            composer.save()
 
 
 def lookup_and_extract(

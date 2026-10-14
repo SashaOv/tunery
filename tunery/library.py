@@ -7,6 +7,7 @@ import yaml
 from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
+from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename
 
 
 MatchMode = Literal["exact", "fuzzy"]
@@ -24,9 +25,13 @@ class LibraryMatch:
 
 
 class Library(Protocol):
-    def lookup_title(self, title: str) -> LibraryMatch | None: ...
+    def lookup_title(
+        self, title: str, key: str | None = None
+    ) -> LibraryMatch | None: ...
 
-    def lookup_file(self, file: str) -> LibraryMatch | None: ...
+    def lookup_file(
+        self, file: str, key: str | None = None
+    ) -> LibraryMatch | None: ...
 
 
 class DirectoryLibrary:
@@ -46,10 +51,43 @@ class DirectoryLibrary:
             self._titles.setdefault(normalize_key(pdf_path.stem), pdf_path)
             self._files.setdefault(normalize_key(pdf_path.name), pdf_path)
 
-    def lookup_title(self, title: str) -> LibraryMatch | None:
-        return self._lookup(title, self._titles, self._title_index, use_stem=True)
+    def lookup_title(
+        self, title: str, key: str | None = None
+    ) -> LibraryMatch | None:
+        for variant in self._key_variants(title, key):
+            result = self._lookup(
+                variant, self._titles, self._title_index, use_stem=True
+            )
+            if result is not None:
+                return result
+        return None
 
-    def lookup_file(self, file: str) -> LibraryMatch | None:
+    def lookup_file(
+        self, file: str, key: str | None = None
+    ) -> LibraryMatch | None:
+        candidates = [file]
+        keyed = keyed_filename(file, key) if key is not None else None
+        if keyed is not None:
+            if is_concert(key):  # type: ignore[arg-type]
+                candidates = [keyed, file]
+            else:
+                candidates = [keyed]
+        for candidate in candidates:
+            result = self._lookup_file_plain(candidate)
+            if result is not None:
+                return result
+        return None
+
+    @staticmethod
+    def _key_variants(title: str, key: str | None) -> list[str]:
+        """Title query variants for a key edition, most specific first."""
+        if key is None:
+            return [title]
+        if is_concert(key):
+            return [f"{title}.{CONCERT_SUFFIX}", title]
+        return [f"{title}.{key}"]
+
+    def _lookup_file_plain(self, file: str) -> LibraryMatch | None:
         path = Path(file)
         if path.is_absolute():
             return None
@@ -164,7 +202,9 @@ class IndexedPdfLibrary:
             match=match,
         )
 
-    def lookup_title(self, title: str) -> LibraryMatch | None:
+    def lookup_title(
+        self, title: str, key: str | None = None
+    ) -> LibraryMatch | None:
         tune = self._tunes.get(normalize_key(title))
         score: float | None = None
         if tune is None and self.match == "fuzzy":
@@ -182,7 +222,9 @@ class IndexedPdfLibrary:
             score=score,
         )
 
-    def lookup_file(self, file: str) -> LibraryMatch | None:
+    def lookup_file(
+        self, file: str, key: str | None = None
+    ) -> LibraryMatch | None:
         return None
 
 
@@ -203,16 +245,20 @@ class LibraryCollection:
     def add(self, library: Library) -> None:
         self._libraries.append(library)
 
-    def lookup_title(self, title: str) -> LibraryMatch | None:
+    def lookup_title(
+        self, title: str, key: str | None = None
+    ) -> LibraryMatch | None:
         for library in reversed(self._libraries):
-            result = library.lookup_title(title)
+            result = library.lookup_title(title, key)
             if result is not None:
                 return result
         return None
 
-    def lookup_file(self, file: str) -> LibraryMatch | None:
+    def lookup_file(
+        self, file: str, key: str | None = None
+    ) -> LibraryMatch | None:
         for library in reversed(self._libraries):
-            result = library.lookup_file(file)
+            result = library.lookup_file(file, key)
             if result is not None:
                 return result
         return None

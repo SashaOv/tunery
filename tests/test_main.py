@@ -6,8 +6,8 @@ from tunery import main as cli
 def test_render_command_uses_default_output(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path):
-        calls.append((layout, output))
+    def render(layout: Path, output: Path, keys: list[str]):
+        calls.append((layout, output, keys))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -17,6 +17,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         (
             Path("setlists/favorites.yaml"),
             Path("setlists/favorites.pdf"),
+            [],
         )
     ]
 
@@ -24,8 +25,8 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
 def test_render_command_accepts_options(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path):
-        calls.append((layout, output))
+    def render(layout: Path, output: Path, keys: list[str]):
+        calls.append((layout, output, keys))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -35,6 +36,10 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "favorites.yaml",
             "-o",
             "book.pdf",
+            "-k",
+            "Bb",
+            "--keys",
+            "Eb,F",
         ]
     )
 
@@ -42,6 +47,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         (
             Path("favorites.yaml"),
             Path("book.pdf"),
+            ["Bb", "Eb,F"],
         )
     ]
 
