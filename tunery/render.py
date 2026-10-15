@@ -95,34 +95,52 @@ def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
         if len(part) == 1:
             return output_path_for_part(output, part[0])
         canons = [canonical_part_name(p) for p in part]
-        # RS combination stays .RS.pdf (LIB4.7); single Rhythm handled below.
-        if set(canons) == {"Piano", "Guitar", "Bass", "Drums"}:
-            return output.with_name(f"{output.stem}.RS{output.suffix}")
         return output.with_name(f"{output.stem}.{'+'.join(canons)}{output.suffix}")
     canon = canonical_part_name(part)
     if canon in ("Concert", "C"):
         return output
-    if canon == "Rhythm":
-        # RS alias handled in expansion; single Rhythm request writes .Rhythm.pdf
-        # (LIB4.7 maps RS/Rhythm Section combination to .RS.pdf via list path).
-        pass
     return output.with_name(f"{output.stem}.{canon}{output.suffix}")
 
 
-def expand_part_specs(parts: list[str] | str | None) -> list[list[str]]:
-    """Normalize --part options into per-output subpart lists."""
+def output_path_for_label(output: Path, label: str | None) -> Path:
+    """Derive output path from a part-spec label (RS stays .RS.pdf)."""
+    if label is None or label in ("Concert", "C"):
+        return output
+    return output.with_name(f"{output.stem}.{label}{output.suffix}")
+
+
+def expand_part_specs(parts: list[str] | str | None) -> list[tuple[str, list[str]]]:
+    """Normalize --part options into (output label, subparts) per output.
+
+    Single RS/Rhythm/Rhythm Section expands to Piano,Guitar,Bass,Drums with
+    output label RS/Rhythm/Rhythm Section respectively. Comma-separated values
+    combine subparts with '+' output naming.
+    """
+    from tunery.parts import canonical_part_name, normalize_text
+
     if parts is None:
-        return [["Concert"]]
+        return [("Concert", ["Concert"])]
     if isinstance(parts, str):
         parts = [parts]
-    specs: list[list[str]] = []
+    specs: list[tuple[str, list[str]]] = []
     for spec in parts:
-        subparts = [s.strip() for s in spec.split(",") if s.strip()]
-        if not subparts:
-            subparts = ["Concert"]
-        specs.append(subparts)
+        raw_subs = [s.strip() for s in spec.split(",") if s.strip()]
+        if not raw_subs:
+            specs.append(("Concert", ["Concert"]))
+            continue
+        if len(raw_subs) == 1:
+            norm = normalize_text(raw_subs[0])
+            if norm in ("rs", "rhythm", "rhythm section"):
+                label = {"rs": "RS", "rhythm": "Rhythm", "rhythm section": "Rhythm Section"}[norm]
+                specs.append((label, ["Piano", "Guitar", "Bass", "Drums"]))
+                continue
+        canons = [canonical_part_name(s) for s in raw_subs]
+        if len(canons) == 1:
+            specs.append((canons[0], canons))
+        else:
+            specs.append(("+".join(canons), canons))
     if not specs:
-        return [["Concert"]]
+        return [("Concert", ["Concert"])]
     return specs
 
 
@@ -486,15 +504,10 @@ def render(
 
     default_dir = lexical_absolute(layout_path.parent)
     show_key = len(key_list) > 1
-    if part is None or (isinstance(part, list) and not part):
-        part_specs: list[list[str]] = [["Concert"]]
-    elif isinstance(part, str):
-        part_specs = expand_part_specs([part])
-    else:
-        part_specs = expand_part_specs(part)
+    part_specs = expand_part_specs(part)
 
-    for subparts in part_specs:
-        part_output = output_path_for_part(output, subparts if subparts != ["Concert"] else None)
+    for label, subparts in part_specs:
+        part_output = output_path_for_label(output, label if label != "Concert" else None)
         for key in key_list:
             key_output = output_path_for_key(part_output, key)
             with Composer(key_output, autosave=False) as composer:
