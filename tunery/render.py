@@ -35,6 +35,7 @@ class FileEntry(BaseModel):
     page: PositiveInt | None = None
     length: PositiveInt | None = None
     notes: str | None = None
+    key: str | None = None
 
     def model_post_init(self, __context) -> None:
         if not self.file and not self.title:
@@ -349,7 +350,7 @@ def process_file_entry(
     hits: list[tuple[str, str, object]] = []  # (subpart_canon, step, match)
     for sub in subparts:
         requested_canon = canonical_part_name(sub)
-        selected = libraries.select_part(title, requested_canon)
+        selected = libraries.select_part(title, requested_canon, entry.key)
         if selected is None:
             print(f'missing {requested_canon} for "{title}"')
             continue

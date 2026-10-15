@@ -202,7 +202,7 @@ class DirectoryLibrary:
         )
 
     def select_part(
-        self, title: str, requested_part: str
+        self, title: str, requested_part: str, score_key: str | None = None
     ) -> tuple[Path, str, list[Path]] | None:
         """Select a file for title+part via substitution chains."""
         from tunery.parts import (
@@ -247,6 +247,22 @@ class DirectoryLibrary:
                             )
                         scored.append((pdf_path, cand))
                         break
+        if score_key is not None and scored:
+            from tunery.keys import normalize_key_name
+
+            try:
+                wanted = normalize_key_name(score_key)
+            except ValueError:
+                wanted = score_key
+            filtered = [
+                (p, c)
+                for p, c in scored
+                if c.score_key is not None and c.score_key.lower() == wanted.lower()
+            ]
+            if filtered:
+                scored = filtered
+            else:
+                print(f'no {wanted} version of "{title}"')
         for step in chain:
             step_hits: list[tuple[Path, object]] = [
                 (p, c) for p, c in scored if step in c.parts or step == c.part
@@ -412,7 +428,7 @@ class LibraryCollection:
         return None
 
     def select_part(
-        self, title: str, requested_part: str
+        self, title: str, requested_part: str, score_key: str | None = None
     ) -> tuple[LibraryMatch, str] | None:
         """Select title+part across libraries, highest priority first.
 
@@ -422,11 +438,11 @@ class LibraryCollection:
         """
         for library in reversed(self._libraries):
             if isinstance(library, LibraryCollection):
-                result = library.select_part(title, requested_part)
+                result = library.select_part(title, requested_part, score_key)
                 if result is not None:
                     return result
             elif isinstance(library, DirectoryLibrary):
-                hit = library.select_part(title, requested_part)
+                hit = library.select_part(title, requested_part, score_key)
                 if hit is not None:
                     source, step, _ = hit
                     return LibraryMatch(title=title, source=source), step
