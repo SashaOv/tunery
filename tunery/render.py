@@ -85,16 +85,45 @@ def lexical_absolute(path: Path) -> Path:
     return Path(os.path.normpath(path))
 
 
-def output_path_for_part(output: Path, part: str | None) -> Path:
+def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
     """Derive per-part setbook output path from the base output path."""
     from tunery.parts import canonical_part_name
 
     if part is None:
         return output
+    if isinstance(part, list):
+        if len(part) == 1:
+            return output_path_for_part(output, part[0])
+        canons = [canonical_part_name(p) for p in part]
+        # RS combination stays .RS.pdf (LIB4.7); single Rhythm handled below.
+        if set(canons) == {"Piano", "Guitar", "Bass", "Drums"}:
+            return output.with_name(f"{output.stem}.RS{output.suffix}")
+        return output.with_name(f"{output.stem}.{'+'.join(canons)}{output.suffix}")
     canon = canonical_part_name(part)
     if canon in ("Concert", "C"):
         return output
+    if canon == "Rhythm":
+        # RS alias handled in expansion; single Rhythm request writes .Rhythm.pdf
+        # (LIB4.7 maps RS/Rhythm Section combination to .RS.pdf via list path).
+        pass
     return output.with_name(f"{output.stem}.{canon}{output.suffix}")
+
+
+def expand_part_specs(parts: list[str] | str | None) -> list[list[str]]:
+    """Normalize --part options into per-output subpart lists."""
+    if parts is None:
+        return [["Concert"]]
+    if isinstance(parts, str):
+        parts = [parts]
+    specs: list[list[str]] = []
+    for spec in parts:
+        subparts = [s.strip() for s in spec.split(",") if s.strip()]
+        if not subparts:
+            subparts = ["Concert"]
+        specs.append(subparts)
+    if not specs:
+        return [["Concert"]]
+    return specs
 
 
 def resolve_path(path_str: str, base_dir: Path) -> Path:
@@ -195,19 +224,25 @@ def process_file_entry(
     composer: Composer,
     libraries: LibraryCollection | None = None,
     key: str = CONCERT_KEY,
-    part: str = "Concert",
+    part: str | list[str] = "Concert",
     verbose: int = 0,
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
 
-    Returns: SuccessResult on success, NotFoundResult if title not found
-              (both subclasses of ProcessEntryResult).
+    `part` is the subpart list for one output (comma-combined). File entries
+    ignore parts. Title entries resolve each subpart via chains, dedupe same
+    files, report missing parts, and nest bookmarks when several files result.
     """
+    from tunery.parts import canonical_part_name
+
     matched_title: str | None = None
     score: float | None = None
-    selected_step: str | None = None
-    requested_part = part
+    subparts: list[str] = (
+        [part] if isinstance(part, str) else list(part) if part else ["Concert"]
+    )
+    if not subparts:
+        subparts = ["Concert"]
     # `file:` entries with explicit page selections address the named PDF
     # directly and skip key edition handling; everything else resolves the
     # per-key edition source.
@@ -245,61 +280,69 @@ def process_file_entry(
         title = display_title(entry.title, input_pdf_path, lookup_key)
         page = entry.page
         length = entry.length
-    else:
-        if not entry.title:
-            raise ValueError("Entry must have either 'file' or 'title'")
-
-        title = entry.title
-        # Non-concert -k selects with no substitution (keys semantics).
-        if lookup_key is not None and not is_concert(lookup_key):
-            library_match = (
-                libraries.lookup_title(title, lookup_key) if libraries else None
-            )
-            if library_match is not None:
-                input_pdf_path = library_match.source
-                page = entry.page if entry.page is not None else library_match.page
-                length = (
-                    entry.length if entry.length is not None else library_match.length
-                )
-                if library_match.score is not None:
-                    matched_title = library_match.title
-                    score = library_match.score
-            else:
-                return NotFoundResult(title=title)
-        else:
-            selected = libraries.select_part(title, part) if libraries else None
-            if selected is not None:
-                library_match, _step = selected
-                selected_step = _step
-                input_pdf_path = library_match.source
-                page = entry.page if entry.page is not None else library_match.page
-                length = (
-                    entry.length if entry.length is not None else library_match.length
-                )
-                if library_match.score is not None:
-                    matched_title = library_match.title
-                    score = library_match.score
-            else:
-                return NotFoundResult(title=title)
-
-    entry_page = composer.add(
-        title=title,
-        source=input_pdf_path,
-        start=page,
-        pages=length,
-        notes=entry.notes,
-    )
-
-    if verbose >= 1 and not entry.file:
-        from tunery.parts import canonical_part_name
-
-        requested_canon = canonical_part_name(requested_part)
-        matched = selected_step or requested_canon
-        print(f'  "{title}" {requested_canon}: {input_pdf_path.name}')
-        if matched != requested_canon:
-            print(f"  {requested_canon} → {matched}")
-    if verbose >= 2 and not entry.file and libraries is not None:
-        for lib_desc, path, cand in libraries.all_candidates(title):
+        entry_page = composer.add(
+            title=title,
+            source=input_pdf_path,
+            start=page,
+            pages=length,
+            notes=entry.notes,
+        )
+        return SuccessResult(
+            title=title,
+            page=entry_page,
+            source_path=input_pdf_path,
+            source_page=page,
+            matched_title=matched_title,
+            score=score,
+        )
+    if not entry.title:
+        raise ValueError("Entry must have either 'file' or 'title'")
+    title = entry.title
+    # Non-concert -k selects with no substitution (keys semantics).
+    if lookup_key is not None and not is_concert(lookup_key):
+        library_match = (
+            libraries.lookup_title(title, lookup_key) if libraries else None
+        )
+        if library_match is None:
+            return NotFoundResult(title=title)
+        input_pdf_path = library_match.source
+        page = entry.page if entry.page is not None else library_match.page
+        length = entry.length if entry.length is not None else library_match.length
+        if library_match.score is not None:
+            matched_title = library_match.title
+            score = library_match.score
+        entry_page = composer.add(
+            title=title, source=input_pdf_path, start=page, pages=length, notes=entry.notes
+        )
+        return SuccessResult(
+            title=title,
+            page=entry_page,
+            source_path=input_pdf_path,
+            source_page=page,
+            matched_title=matched_title,
+            score=score,
+        )
+    if libraries is None:
+        return NotFoundResult(title=title)
+    # Title exists if any candidate (or indexed hit) matches.
+    existing = libraries.all_candidates(title)
+    if not existing:
+        return NotFoundResult(title=title)
+    hits: list[tuple[str, str, object]] = []  # (subpart_canon, step, match)
+    for sub in subparts:
+        requested_canon = canonical_part_name(sub)
+        selected = libraries.select_part(title, requested_canon)
+        if selected is None:
+            print(f'missing {requested_canon} for "{title}"')
+            continue
+        match, step = selected
+        hits.append((requested_canon, step, match))
+        if verbose >= 1:
+            print(f'  "{title}" {requested_canon}: {match.source.name}')
+            if step != requested_canon:
+                print(f"  {requested_canon} → {step}")
+    if verbose >= 2:
+        for lib_desc, path, cand in existing:
             if cand is None:
                 print(f'  candidate "{title}" in "{lib_desc}" ({path.name}): indexed')
             else:
@@ -309,12 +352,51 @@ def process_file_entry(
                     f"var={cand.variations}, free={cand.free_tags}, "
                     f"rules={cand.rules_fired}"
                 )
-
+    if not hits:
+        return NotFoundResult(title=title)
+    # Dedupe same file, preserving first subpart order.
+    seen: dict[Path, tuple[str, str, object]] = {}
+    for requested_canon, step, match in hits:
+        src = match.source.resolve() if hasattr(match.source, "resolve") else match.source
+        if src not in seen:
+            seen[src] = (requested_canon, step, match)
+    unique = list(seen.values())
+    if len(unique) == 1:
+        requested_canon, _step, match = unique[0]
+        page = entry.page if entry.page is not None else match.page
+        length = entry.length if entry.length is not None else match.length
+        entry_page = composer.add(
+            title=title, source=match.source, start=page, pages=length, notes=entry.notes
+        )
+        return SuccessResult(
+            title=title,
+            page=entry_page,
+            source_path=match.source,
+            source_page=page,
+            matched_title=matched_title,
+            score=score,
+        )
+    composer.start_section(title)
+    first_page: int | None = None
+    first_source: object = unique[0][2].source
+    for requested_canon, _step, match in unique:
+        page = entry.page if entry.page is not None else match.page
+        length = entry.length if entry.length is not None else match.length
+        entry_page = composer.add(
+            title=requested_canon,
+            source=match.source,
+            start=page,
+            pages=length,
+            notes=entry.notes,
+        )
+        if first_page is None:
+            first_page = entry_page
+    composer.end_section()
     return SuccessResult(
         title=title,
-        page=entry_page,
-        source_path=input_pdf_path,
-        source_page=page,
+        page=first_page or 0,
+        source_path=first_source,  # type: ignore[arg-type]
+        source_page=None,
         matched_title=matched_title,
         score=score,
     )
@@ -327,7 +409,7 @@ def process_items(
     libraries: LibraryCollection,
     key: str,
     show_key: bool,
-    part: str = "Concert",
+    part: str | list[str] = "Concert",
     verbose: int = 0,
 ) -> None:
     """Process layout items recursively for one key edition."""
@@ -357,15 +439,14 @@ def render(
     output: Path,
     keys: list[str] | None = None,
     base: Path | None = None,
-    part: str | None = None,
+    part: str | list[str] | None = None,
     verbose: int = 0,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
-    Renders one setbook per key edition: the concert edition uses `output`
-    as-is, other keys use `<stem>.<Key>.pdf` siblings. `--part` selects
-    instrument parts with substitution chains; other than Concert it writes
-    `<stem>.<Part>.pdf`.
+    Renders one setbook per key edition and per --part option. `--part`
+    selects instrument parts with substitution chains; other than Concert it
+    writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>+<B>.pdf`.
     """
     try:
         with open(str(layout_path), "r") as file:
@@ -405,16 +486,22 @@ def render(
 
     default_dir = lexical_absolute(layout_path.parent)
     show_key = len(key_list) > 1
-    requested_part = part or "Concert"
-    part_output = output_path_for_part(output, requested_part if requested_part != "Concert" else None)
+    if part is None or (isinstance(part, list) and not part):
+        part_specs: list[list[str]] = [["Concert"]]
+    elif isinstance(part, str):
+        part_specs = expand_part_specs([part])
+    else:
+        part_specs = expand_part_specs(part)
 
-    for key in key_list:
-        key_output = output_path_for_key(part_output, key)
-        with Composer(key_output, autosave=False) as composer:
-            process_items(
-                layout_entries, default_dir, composer, libraries, key, show_key, requested_part, verbose
-            )
-            composer.save()
+    for subparts in part_specs:
+        part_output = output_path_for_part(output, subparts if subparts != ["Concert"] else None)
+        for key in key_list:
+            key_output = output_path_for_key(part_output, key)
+            with Composer(key_output, autosave=False) as composer:
+                process_items(
+                    layout_entries, default_dir, composer, libraries, key, show_key, subparts, verbose
+                )
+                composer.save()
 
 
 def lookup_and_extract(

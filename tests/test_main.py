@@ -11,7 +11,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         output: Path,
         keys: list[str],
         base: Path | None = None,
-        part: str | None = None,
+        part: list[str] | None = None,
         verbose: int = 0,
     ):
         calls.append((layout, output, keys, base, part, verbose))
@@ -40,7 +40,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         output: Path,
         keys: list[str],
         base: Path | None = None,
-        part: str | None = None,
+        part: list[str] | None = None,
         verbose: int = 0,
     ):
         calls.append((layout, output, keys, base, part, verbose))
@@ -61,6 +61,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "proj",
             "--part",
             "Piano",
+            "--part",
+            "Bass,Piano",
             "-v",
             "--verbose",
             "1",
@@ -73,7 +75,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             Path("book.pdf"),
             ["Bb", "Eb,F"],
             Path("proj"),
-            "Piano",
+            ["Piano", "Bass,Piano"],
             1,
         )
     ]

@@ -36,12 +36,12 @@ def render_command(
         ),
     ] = None,
     part: Annotated[
-        str | None,
+        list[str],
         Parameter(
             ["--part"],
-            help="Requested part with substitution chains (default: Concert).",
+            help="Requested part(s) with substitution chains. Repeat for multiple outputs; comma combines in one file.",
         ),
-    ] = None,
+    ] = [],
     verbose: Annotated[
         int,
         Parameter(
@@ -61,7 +61,7 @@ def render_command(
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
     level = max(verbose, v)
-    render(layout, output_path, keys, base, part, level)
+    render(layout, output_path, keys, base, part if part else None, level)
 
 
 @app.command(name="lookup")
