@@ -35,10 +35,17 @@ def render_command(
             help="Base directory for project config discovery (default: logical cwd or layout directory).",
         ),
     ] = None,
+    part: Annotated[
+        str | None,
+        Parameter(
+            ["--part"],
+            help="Requested part with substitution chains (default: Concert).",
+        ),
+    ] = None,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
-    render(layout, output_path, keys, base)
+    render(layout, output_path, keys, base, part)
 
 
 @app.command(name="lookup")

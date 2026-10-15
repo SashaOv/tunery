@@ -47,9 +47,10 @@ class DirectoryLibrary:
         self._titles: dict[str, Path] = {}
         self._files: dict[str, Path] = {}
         self._folders: dict[Path, str | None] = {}
-        for pdf_path, folder in sorted(
+        self._items: list[tuple[Path, str | None]] = sorted(
             self._discover(), key=lambda item: str(item[0])
-        ):
+        )
+        for pdf_path, folder in self._items:
             self._folders[pdf_path] = folder
             self._title_index.add(pdf_path.stem, pdf_path)
             self._file_index.add(pdf_path.name, pdf_path)
@@ -200,6 +201,76 @@ class DirectoryLibrary:
             score=result.score,
         )
 
+    def select_part(
+        self, title: str, requested_part: str
+    ) -> tuple[Path, str, list[Path]] | None:
+        """Select a file for title+part via substitution chains.
+
+        Returns (source, matched_step, tied_candidates) or None. First library
+        with an item on any chain step wins, at its earliest step. Ties use
+        fewest tags then path order, with a visible warning.
+        """
+        from tunery.parts import (
+            canonical_part_name,
+            chain_for_part,
+            match_candidate,
+        )
+
+        requested = canonical_part_name(requested_part)
+        chain = chain_for_part(requested)
+        # Gather candidates matching the title (exact prefix; fuzzy if enabled).
+        scored: list[tuple[Path, object]] = []
+        for pdf_path, folder in self._items:
+            cand = match_candidate(title, pdf_path.stem, folder)
+            if cand is not None:
+                scored.append((pdf_path, cand))
+        if not scored and self.match == "fuzzy":
+            from tunery.parts import squash_text
+
+            from rapidfuzz import fuzz as _fuzz
+
+            t_sq = squash_text(title)
+            for pdf_path, folder in self._items:
+                for text in (pdf_path.stem, folder or ""):
+                    if not text:
+                        continue
+                    if _fuzz.ratio(t_sq, squash_text(text)) >= 90:
+                        cand = match_candidate(text, pdf_path.stem, folder)
+                        # Fallback: interpret remainder as whole stem tags.
+                        if cand is None:
+                            from tunery.parts import TitleCandidate, interpret_remainder
+
+                            interp = interpret_remainder(pdf_path.stem)
+                            cand = TitleCandidate(
+                                remainder=pdf_path.stem,
+                                parts=interp.parts,
+                                part=interp.part,
+                                score_key=interp.score_key,
+                                variations=interp.variations,
+                                free_tags=[],
+                                rules_fired=interp.rules_fired,
+                            )
+                        scored.append((pdf_path, cand))
+                        break
+        for step in chain:
+            step_hits: list[tuple[Path, object]] = [
+                (p, c) for p, c in scored if step in c.parts or step == c.part
+            ]
+            # Dual scores list both parts; also match "Piano/Guitar" part label.
+            if not step_hits:
+                continue
+            def _sort_key(item: tuple[Path, object]) -> tuple[int, str]:
+                _, c = item
+                return (c.tag_count, str(item[0]))
+
+            step_hits.sort(key=_sort_key)
+            best_path, best_cand = step_hits[0]
+            if len(step_hits) > 1:
+                names = ", ".join(sorted(str(p.name) for p, _ in step_hits))
+                print(f'tie for "{title}" ({step}): {names}')
+            return best_path, step, [p for p, _ in step_hits]
+        return None
+
 
 class IndexedTune(BaseModel):
     title: str
@@ -332,6 +403,31 @@ class LibraryCollection:
             result = library.lookup_file(file, key)
             if result is not None:
                 return result
+        return None
+
+    def select_part(
+        self, title: str, requested_part: str
+    ) -> tuple[LibraryMatch, str] | None:
+        """Select title+part across libraries, highest priority first.
+
+        Indexed libraries answer any part request with their pages.
+        Directory libraries use substitution chains; first library with a hit
+        wins at its earliest chain step.
+        """
+        for library in reversed(self._libraries):
+            if isinstance(library, LibraryCollection):
+                result = library.select_part(title, requested_part)
+                if result is not None:
+                    return result
+            elif isinstance(library, DirectoryLibrary):
+                hit = library.select_part(title, requested_part)
+                if hit is not None:
+                    source, step, _ = hit
+                    return LibraryMatch(title=title, source=source), step
+            else:
+                match = library.lookup_title(title)
+                if match is not None:
+                    return match, "Concert"
         return None
 
 

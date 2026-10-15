@@ -46,6 +46,15 @@ _GROUPS: dict[str, str] = {
     "c instruments": "Concert",
     "c instr": "Concert",
     "melody": "Melody",
+    "rhythm": "Rhythm",
+    "rhythm section": "Rhythm",
+    "rs": "Rhythm",
+}
+
+_CONCERT_FALLBACK = ["Concert", "Lead Sheet", "Vocal", "Melody", "Flute"]
+
+_INSTRUMENT_GROUPS: dict[str, str | None] = {
+    canon: group for canon, _, group in _INSTRUMENTS
 }
 
 _KINDS: dict[str, str] = {
@@ -516,3 +525,139 @@ def parse_filename(stem: str, folder: str | None = None) -> ItemInfo:
         free_tags=interp.free_tags,
         rules_fired=interp.rules_fired,
     )
+
+
+def canonical_part_name(requested: str) -> str:
+    """Canonicalize a --part value (case-insensitive, aliases)."""
+    norm = normalize_text(requested)
+    if norm in ("rs", "rhythm section", "rhythm"):
+        # RS expansion is LIB4.7; for single-part selection treat as Rhythm.
+        return "Rhythm"
+    if norm in _ALIAS_MAP:
+        canon, _ = _ALIAS_MAP[norm]
+        return canon
+    # Instrument + role (e.g. horn 1, alto sax 2).
+    m = re.match(r"^(.*)\s+(\d{1,2})$", norm)
+    if m and m.group(1) in _ALIAS_MAP:
+        canon, _ = _ALIAS_MAP[m.group(1)]
+        return f"{canon} {m.group(2)}"
+    for key, canon in _GROUPS.items():
+        if norm == key:
+            return canon
+    for key, canon in _KINDS.items():
+        if norm == key:
+            return canon
+    # Title-case fallback (Bb, Eb, Concert, etc.).
+    low = norm.lower()
+    if low == "bb":
+        return "Bb"
+    if low == "eb":
+        return "Eb"
+    return requested.strip() or COMBO_DEFAULT_PART
+
+
+def _base_instrument(part: str) -> str:
+    m = re.match(r"^(.*)\s+\d{1,2}$", part)
+    if m and m.group(1) in _INSTRUMENT_GROUPS:
+        return m.group(1)
+    return part
+
+
+def _folder_score_key(folder: str | None) -> str | None:
+    if not folder:
+        return None
+    folder_norm = normalize_text(folder)
+    m = re.search(r"concert\s+([a-g][#b]?)", folder_norm)
+    if m:
+        return _parse_key_token(m.group(1))
+    return None
+
+
+@dataclass
+class TitleCandidate:
+    remainder: str
+    parts: list[str]
+    part: str
+    score_key: str | None = None
+    variations: list[str] = field(default_factory=list)
+    free_tags: list[str] = field(default_factory=list)
+    rules_fired: list[str] = field(default_factory=list)
+
+    @property
+    def tag_count(self) -> int:
+        return (1 if self.score_key else 0) + len(self.variations) + len(self.free_tags)
+
+
+def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCandidate | None:
+    """Match layout title against stem or folder, interpreting remainder tags."""
+    stem_remainder = match_prefix(title, stem)
+    if stem_remainder is not None:
+        interp = interpret_remainder(stem_remainder)
+        if interp.free_tags:
+            return None
+        score_key = interp.score_key or _folder_score_key(folder)
+        return TitleCandidate(
+            remainder=stem_remainder,
+            parts=interp.parts,
+            part=interp.part,
+            score_key=score_key,
+            variations=interp.variations,
+            free_tags=interp.free_tags,
+            rules_fired=interp.rules_fired,
+        )
+    if folder:
+        folder_remainder = match_prefix(title, folder)
+        if folder_remainder is not None:
+            folder_interp = interpret_remainder(folder_remainder)
+            if folder_interp.free_tags:
+                return None
+            stem_interp = interpret_remainder(clean_stem(stem))
+            score_key = stem_interp.score_key or folder_interp.score_key or _folder_score_key(folder)
+            return TitleCandidate(
+                remainder=clean_stem(stem),
+                parts=stem_interp.parts,
+                part=stem_interp.part,
+                score_key=score_key,
+                variations=stem_interp.variations,
+                free_tags=[],
+                rules_fired=stem_interp.rules_fired,
+            )
+    return None
+
+
+def chain_for_part(requested: str) -> list[str]:
+    """Substitution chain for a requested part, earliest first."""
+    part = canonical_part_name(requested)
+    if part == "Piano":
+        return ["Piano", "Rhythm", *_CONCERT_FALLBACK]
+    if part == "Guitar":
+        return ["Guitar", "Piano", "Rhythm", *_CONCERT_FALLBACK]
+    if part == "Bass":
+        return ["Bass", "Rhythm", *_CONCERT_FALLBACK]
+    if part == "Drums":
+        return ["Drums", "Rhythm", *_CONCERT_FALLBACK]
+    if part == "Rhythm":
+        return ["Rhythm", *_CONCERT_FALLBACK]
+    if part in _CONCERT_FALLBACK:
+        # Concert step with sub-order starting at requested kind.
+        idx = _CONCERT_FALLBACK.index(part)
+        return _CONCERT_FALLBACK[idx:]
+    base = _base_instrument(part)
+    if base in _INSTRUMENT_GROUPS:
+        group = _INSTRUMENT_GROUPS[base]
+        steps = [part]
+        if part != base:
+            steps.append(base)
+        if group and group not in steps:
+            # Rhythm group already covered? Keep single Rhythm entry.
+            steps.append(group)
+        for fallback in _CONCERT_FALLBACK:
+            if fallback not in steps:
+                steps.append(fallback)
+        return steps
+    # Group or unknown: direct then Concert fallback.
+    steps = [part]
+    for fallback in _CONCERT_FALLBACK:
+        if fallback not in steps:
+            steps.append(fallback)
+    return steps

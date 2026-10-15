@@ -6,8 +6,14 @@ from tunery import main as cli
 def test_render_command_uses_default_output(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path, keys: list[str], base: Path | None = None):
-        calls.append((layout, output, keys, base))
+    def render(
+        layout: Path,
+        output: Path,
+        keys: list[str],
+        base: Path | None = None,
+        part: str | None = None,
+    ):
+        calls.append((layout, output, keys, base, part))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -19,6 +25,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             Path("setlists/favorites.pdf"),
             [],
             None,
+            None,
         )
     ]
 
@@ -26,8 +33,14 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
 def test_render_command_accepts_options(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path, keys: list[str], base: Path | None = None):
-        calls.append((layout, output, keys, base))
+    def render(
+        layout: Path,
+        output: Path,
+        keys: list[str],
+        base: Path | None = None,
+        part: str | None = None,
+    ):
+        calls.append((layout, output, keys, base, part))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -43,6 +56,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "Eb,F",
             "--base",
             "proj",
+            "--part",
+            "Piano",
         ]
     )
 
@@ -52,6 +67,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             Path("book.pdf"),
             ["Bb", "Eb,F"],
             Path("proj"),
+            "Piano",
         )
     ]
 

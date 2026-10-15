@@ -85,6 +85,18 @@ def lexical_absolute(path: Path) -> Path:
     return Path(os.path.normpath(path))
 
 
+def output_path_for_part(output: Path, part: str | None) -> Path:
+    """Derive per-part setbook output path from the base output path."""
+    from tunery.parts import canonical_part_name
+
+    if part is None:
+        return output
+    canon = canonical_part_name(part)
+    if canon in ("Concert", "C"):
+        return output
+    return output.with_name(f"{output.stem}.{canon}{output.suffix}")
+
+
 def resolve_path(path_str: str, base_dir: Path) -> Path:
     """
     Resolve a file path relative to base_dir if it's relative, otherwise return as-is.
@@ -183,6 +195,7 @@ def process_file_entry(
     composer: Composer,
     libraries: LibraryCollection | None = None,
     key: str = CONCERT_KEY,
+    part: str = "Concert",
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
@@ -234,20 +247,36 @@ def process_file_entry(
             raise ValueError("Entry must have either 'file' or 'title'")
 
         title = entry.title
-        library_match = (
-            libraries.lookup_title(title, lookup_key) if libraries else None
-        )
-        if library_match is not None:
-            input_pdf_path = library_match.source
-            page = entry.page if entry.page is not None else library_match.page
-            length = (
-                entry.length if entry.length is not None else library_match.length
+        # Non-concert -k selects with no substitution (keys semantics).
+        if lookup_key is not None and not is_concert(lookup_key):
+            library_match = (
+                libraries.lookup_title(title, lookup_key) if libraries else None
             )
-            if library_match.score is not None:
-                matched_title = library_match.title
-                score = library_match.score
+            if library_match is not None:
+                input_pdf_path = library_match.source
+                page = entry.page if entry.page is not None else library_match.page
+                length = (
+                    entry.length if entry.length is not None else library_match.length
+                )
+                if library_match.score is not None:
+                    matched_title = library_match.title
+                    score = library_match.score
+            else:
+                return NotFoundResult(title=title)
         else:
-            return NotFoundResult(title=title)
+            selected = libraries.select_part(title, part) if libraries else None
+            if selected is not None:
+                library_match, _step = selected
+                input_pdf_path = library_match.source
+                page = entry.page if entry.page is not None else library_match.page
+                length = (
+                    entry.length if entry.length is not None else library_match.length
+                )
+                if library_match.score is not None:
+                    matched_title = library_match.title
+                    score = library_match.score
+            else:
+                return NotFoundResult(title=title)
 
     entry_page = composer.add(
         title=title,
@@ -274,12 +303,13 @@ def process_items(
     libraries: LibraryCollection,
     key: str,
     show_key: bool,
+    part: str = "Concert",
 ) -> None:
     """Process layout items recursively for one key edition."""
     for item in items:
         if isinstance(item, SectionEntry):
             composer.start_section(item.section)
-            process_items(item.body, default_dir, composer, libraries, key, show_key)
+            process_items(item.body, default_dir, composer, libraries, key, show_key, part)
             composer.end_section()
         else:
             result = process_file_entry(
@@ -288,6 +318,7 @@ def process_items(
                 composer,
                 libraries,
                 key,
+                part,
             )
             if show_key:
                 print(f"[{key}] {result.format()}")
@@ -300,11 +331,14 @@ def render(
     output: Path,
     keys: list[str] | None = None,
     base: Path | None = None,
+    part: str | None = None,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
     Renders one setbook per key edition: the concert edition uses `output`
-    as-is, other keys use `<stem>.<Key>.pdf` siblings.
+    as-is, other keys use `<stem>.<Key>.pdf` siblings. `--part` selects
+    instrument parts with substitution chains; other than Concert it writes
+    `<stem>.<Part>.pdf`.
     """
     try:
         with open(str(layout_path), "r") as file:
@@ -344,12 +378,14 @@ def render(
 
     default_dir = lexical_absolute(layout_path.parent)
     show_key = len(key_list) > 1
+    requested_part = part or "Concert"
+    part_output = output_path_for_part(output, requested_part if requested_part != "Concert" else None)
 
     for key in key_list:
-        key_output = output_path_for_key(output, key)
+        key_output = output_path_for_key(part_output, key)
         with Composer(key_output, autosave=False) as composer:
             process_items(
-                layout_entries, default_dir, composer, libraries, key, show_key
+                layout_entries, default_dir, composer, libraries, key, show_key, requested_part
             )
             composer.save()
 
