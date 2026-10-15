@@ -1,5 +1,7 @@
 from tunery.parts import (
+    chain_for_part,
     clean_stem,
+    fuzzy_title_prefix,
     interpret_remainder,
     match_prefix,
     normalize_text,
@@ -102,3 +104,36 @@ def test_vault_names() -> None:
     assert parse_filename("tune-Guitar").part == "Guitar"
     assert parse_filename("tune-Bass").part == "Bass"
     assert parse_filename("soft-impressions-Bb").part == "Bb"
+
+
+def test_bass_clarinet_distinct_from_bass() -> None:
+    assert interpret_remainder("Bass Clarinet").part == "Bass Clarinet"
+    assert interpret_remainder("Bass Trombone").part == "Bass Trombone"
+    assert "Bass Clarinet" not in chain_for_part("Bass")
+    assert "Bass" not in chain_for_part("Bass Clarinet")
+    assert "Bass Trombone" not in chain_for_part("Bass")
+    assert "Bass Trombone" not in chain_for_part("Trombone")
+
+
+def test_paren_instrument_is_variation_not_dual() -> None:
+    r = interpret_remainder("(Vocal)-Piano")
+    assert r.part == "Piano"
+    assert r.parts == ["Piano"]
+    assert "vocal" in [v.lower() for v in r.variations]
+
+
+def test_fuzzy_title_prefix_matches_word_prefix() -> None:
+    stem = "si-tu-vois-ma-mere-sidney-bechet-lead-sheet-C_Major"
+    assert fuzzy_title_prefix("Si Tu Vois Ma Mare", stem) == "si tu vois ma mere"
+    # Two misspellings (vois/voir, mare/mere) fall below the 90 cutoff.
+    assert fuzzy_title_prefix("Si Tu Vois Ma Mare", "Si Tu Voir Ma Mere") is None
+
+
+def test_fuzzy_title_prefix_rejects_inner_substring() -> None:
+    assert fuzzy_title_prefix("Morning", "Softly As In A Morning Sunrise") is None
+    assert fuzzy_title_prefix("Sunny", "On The Sunny Side Of The Street") is None
+
+
+def test_unspecified_sax_is_not_concert() -> None:
+    assert interpret_remainder("Tenro Sax part in Concert Gm)").part == "Saxophone"
+    assert interpret_remainder("(Alto Sax part in Concert Gm)").part == "Alto Sax"

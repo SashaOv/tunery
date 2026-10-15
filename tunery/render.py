@@ -100,12 +100,17 @@ def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
     canon = canonical_part_name(part)
     if canon in ("Concert", "C"):
         return output
+    if output.stem == canon or output.stem.endswith(f".{canon}"):
+        return output
     return output.with_name(f"{output.stem}.{canon}{output.suffix}")
 
 
 def output_path_for_label(output: Path, label: str | None) -> Path:
     """Derive output path from a part-spec label (RS stays .RS.pdf)."""
     if label is None or label in ("Concert", "C"):
+        return output
+    # Don't double-suffix when -o already ends with the part label.
+    if output.stem == label or output.stem.endswith(f".{label}"):
         return output
     return output.with_name(f"{output.stem}.{label}{output.suffix}")
 
@@ -347,14 +352,14 @@ def process_file_entry(
     existing = libraries.all_candidates(title)
     if not existing:
         return NotFoundResult(title=title)
+    locked = libraries.select_subparts(title, subparts, entry.key)
+    if locked is None:
+        return NotFoundResult(title=title)
+    locked_hits, locked_missing = locked
+    for sub in locked_missing:
+        print(f'missing {sub} for "{title}"')
     hits: list[tuple[str, str, object]] = []  # (subpart_canon, step, match)
-    for sub in subparts:
-        requested_canon = canonical_part_name(sub)
-        selected = libraries.select_part(title, requested_canon, entry.key)
-        if selected is None:
-            print(f'missing {requested_canon} for "{title}"')
-            continue
-        match, step = selected
+    for requested_canon, step, match in locked_hits:
         hits.append((requested_canon, step, match))
         if verbose >= 1:
             print(f'  "{title}" {requested_canon}: {match.source.name}')

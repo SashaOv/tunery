@@ -135,3 +135,32 @@ def test_horn_role_selects_exact(tmp_path: Path) -> None:
     render(layout, tmp_path / "book.pdf", part="Horn 1")
 
     assert (tmp_path / "book.Horn 1.pdf").exists()
+
+
+def test_bass_does_not_match_bass_clarinet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdf(tmp_path / "Vault" / "Tune" / "Tune-Piano.pdf")
+    create_pdf(tmp_path / "Vault" / "Tune" / "Tune-Bass_Clarinet.pdf")
+    (tmp_path / "tunery.yaml").write_text("- library: Vault\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Tune"}])
+
+    render(layout, tmp_path / "book.pdf", part="Bass")
+
+    assert 'missing Bass for "Tune"' in capsys.readouterr().out
+
+
+def test_fuzzy_title_keeps_part_from_stem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "Vault" / "Si Tu Voir Ma Mere"
+    for tag in ("Alto_Saxophone", "Bass_Clarinet", "C_Major"):
+        create_pdf(folder / f"si-tu-vois-ma-mere-sidney-bechet-lead-sheet-{tag}.pdf")
+    (tmp_path / "tunery.yaml").write_text("- library: Vault\n  match: fuzzy\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Si Tu Vois Ma Mare"}])
+
+    render(layout, tmp_path / "book.pdf", part="Piano", verbose=1)
+
+    out = capsys.readouterr().out
+    assert "lead-sheet-C_Major.pdf" in out
+    assert "tie for" not in out

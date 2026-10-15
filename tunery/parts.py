@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from rapidfuzz import fuzz
+
 
 COMBO_DEFAULT_PART = "Concert"
 
@@ -17,11 +19,15 @@ _INSTRUMENTS: list[tuple[str, list[str], str | None]] = [
     ("Alto Sax", ["alto saxophone", "alto sax", "alto", "alt", "as"], "Eb"),
     ("Tenor Sax", ["tenor saxophone", "tenor sax", "tenorsax", "tenor", "ten", "ts"], "Bb"),
     ("Bari Sax", ["bari sax", "baritone sax", "bari", "baritone", "bsx"], "Eb"),
+    # Unspecified saxophone (e.g. "Tenro Sax part", "John Mayer-Saxophone"):
+    # a sax part of unknown key, so it never passes for the concert chart.
+    ("Saxophone", ["saxophone", "sax"], None),
     ("Bass Clarinet", ["bass clarinet", "bass clr"], "Bb"),
     ("Clarinet", ["clarinet in bb", "clarinet"], "Bb"),
     ("Trumpet", ["trumpet in bb", "trumpet", "tpt", "tp"], "Bb"),
     ("Flugelhorn", ["flugelhorn", "flugel"], "Bb"),
     ("Trombone", ["trombone", "bone", "tbn"], "Bass Clef"),
+    ("Bass Trombone", ["bass trombone"], "Bass Clef"),
     ("Flute", ["flute"], "Concert"),
     ("Vocal", ["vocal", "voice", "vx"], "Concert"),
     ("Piano", ["electric piano", "piano", "pno", "keys"], "Rhythm"),
@@ -38,6 +44,11 @@ for _canon, _aliases, _group in _INSTRUMENTS:
     for _a in _aliases:
         _ALIAS_MAP[_a] = (_canon, _group)
         _ALIAS_MAP[_a.replace(" ", "")] = (_canon, _group)
+
+# Squashed alias forms (spaces removed) for single-instrument detection.
+# Used to keep multi-word instruments ("bass clarinet") from being read as
+# duals ("Bass"+"Clarinet").
+_SQUASHED_ALIAS_SET: set[str] = {a.replace(" ", "") for a in _ALIAS_MAP}
 
 _GROUPS: dict[str, str] = {
     "bb": "Bb",
@@ -123,6 +134,24 @@ def squash_text(text: str) -> str:
     return normalize_text(text).replace(" ", "")
 
 
+def fuzzy_title_prefix(title: str, name_text: str, cutoff: float = 90.0) -> str | None:
+    """Word prefix of `name_text` that fuzzily equals `title`, or None.
+
+    Compares squashed forms; the best ratio at or above `cutoff` wins, the
+    shortest prefix on equal ratios. Returns the prefix in normalized form,
+    which `match_candidate` matches exactly against the same name text.
+    """
+    target = squash_text(title)
+    words = normalize_text(clean_stem(name_text)).split(" ")
+    best: int | None = None
+    best_score = cutoff
+    for end in range(1, len(words) + 1):
+        score = fuzz.ratio(target, "".join(words[:end]))
+        if score > best_score or (best is None and score >= cutoff):
+            best, best_score = end, score
+    return " ".join(words[:best]) if best is not None else None
+
+
 def clean_stem(stem: str) -> str:
     """Unwrap Finale prefix, drop Copy prefixes and trailing (1)."""
     s = stem.strip()
@@ -166,7 +195,7 @@ def _tokenize_tag_text(tag_text: str) -> list[str]:
     return [t for t in norm.split(" ") if t]
 
 
-def interpret_remainder(tag_text: str) -> InterpretedTags:
+def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTags:
     """Interpret tag text right to left, longest span wins, combo profile."""
     tokens = _tokenize_tag_text(tag_text)
     n = len(tokens)
@@ -179,9 +208,14 @@ def interpret_remainder(tag_text: str) -> InterpretedTags:
     kinds_found: list[tuple[int, str]] = []
     dual: list[str] | None = None
 
-    # Check dual-instrument single-segment: whole remainder is one segment joining two instruments.
+    # Check dual-instrument single-segment: whole remainder joins two
+    # instruments AND is not itself a single multi-word instrument alias
+    # (e.g. "bass clarinet" is one instrument, not a Bass+Clarinet dual).
+    # Parenthesized instruments are variations, never duals
+    # (e.g. "All of Me (Vocal)-Piano" -> Piano, variation vocal).
     squashed_all = "".join(tokens)
-    if tokens and _is_dual(squashed_all, tokens):
+    has_parens = "(" in tag_text or "[" in tag_text
+    if tokens and allow_dual and not has_parens and squashed_all not in _SQUASHED_ALIAS_SET and _is_dual(squashed_all, tokens):
         dual_parts = _split_dual(squashed_all)
         if dual_parts:
             return InterpretedTags(
@@ -450,45 +484,65 @@ def match_prefix(layout_title: str, name_text: str) -> str | None:
     split; a soft (space) boundary allows it here (tag validation happens in
     selection via interpret_remainder).
     """
+    hit = match_prefix_boundary(layout_title, name_text)
+    return hit[0] if hit else None
+
+
+def match_prefix_boundary(layout_title: str, name_text: str) -> tuple[str, bool, bool] | None:
+    """Return (remainder, is_hard_boundary, remainder_has_parens) or None.
+
+    Hard separators: ' - ', '-', '.', ',', '(', ')', '[', ']', ':'. Soft is a
+    space. No separator (mid-word) is not a boundary. Exact match returns
+    ("", True, False).
+    """
     name_clean = clean_stem(name_text)
     t_sq = squash_text(layout_title)
     n_sq = squash_text(name_clean)
     if not t_sq:
         return None
     if n_sq == t_sq:
-        return ""
+        return ("", True, False)
     if not n_sq.startswith(t_sq):
         return None
-    # Map squashed prefix length back to original normalized string to find boundary.
+    # Walk original cleaned string counting alphanumerics to find split.
+    lowered = name_clean.lower().replace("’", "'").replace("‘", "'").replace("'", "")
+    target = len(t_sq)
+    count = 0
+    split_pos: int | None = None
+    for pos, ch in enumerate(lowered):
+        if ch.isalnum():
+            count += 1
+            if count == target:
+                split_pos = pos + 1
+                break
+    if split_pos is None:
+        return None
+    rest_original = lowered[split_pos:]
+    if not rest_original:
+        return ("", True, False)
+    # Boundary check: next char must not be alnum (mid-word).
+    first = rest_original[0]
+    if first.isalnum():
+        return None
+    hard_chars = set("-.,()[]:")
+    # ' - ' contains '-', hard. Space alone is soft.
+    is_hard = any(c in hard_chars for c in rest_original[:3])
+    has_parens = "(" in rest_original or "[" in rest_original
+    # Normalize remainder via normalize_text for downstream parsing.
     norm = normalize_text(name_clean)
-    t_norm = normalize_text(layout_title)
-    # Find split point in norm where squashed prefix ends.
+    # Recompute remainder via norm split (as before) for stable output.
     sq_count = 0
     idx = 0
-    target = len(t_sq)
-    for pos, ch in enumerate(norm):
+    for p, ch in enumerate(norm):
         if ch != " ":
             sq_count += 1
             if sq_count == target:
-                idx = pos + 1
+                idx = p + 1
                 break
     else:
         return None
-    rest = norm[idx:]
-    if not rest:
-        return ""
-    # Boundary: next char in norm must be a boundary (space, since punct->space).
-    # Hard boundaries became spaces too; accept space or end. Require that the
-    # title part ends at a word boundary in normalized layout title terms:
-    # check the remainder starts at a space or the title consumed full words.
-    # Since norm uses spaces for all separators, remainder starting (possibly
-    # after spaces) is a boundary. Verify prefix aligns to a space or end.
-    if rest.startswith(" "):
-        return rest.strip()
-    # No space: e.g. "SoWhat" vs "So What" – squashed equal but no space.
-    # Accept when squashed remainder is empty or starts new word (hard to tell);
-    # accept as boundary (covers SoWhat = So What).
-    return rest.strip()
+    rest = norm[idx:].strip()
+    return (rest, is_hard, has_parens)
 
 
 @dataclass
@@ -589,27 +643,35 @@ class TitleCandidate:
 
 
 def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCandidate | None:
-    """Match layout title against stem or folder, interpreting remainder tags."""
-    stem_remainder = match_prefix(title, stem)
-    if stem_remainder is not None:
-        interp = interpret_remainder(stem_remainder)
-        if interp.free_tags:
-            return None
-        score_key = interp.score_key or _folder_score_key(folder)
-        return TitleCandidate(
-            remainder=stem_remainder,
-            parts=interp.parts,
-            part=interp.part,
-            score_key=score_key,
-            variations=interp.variations,
-            free_tags=interp.free_tags,
-            rules_fired=interp.rules_fired,
-        )
+    """Match layout title against stem or folder, interpreting remainder tags.
+
+    Hard-boundary remainders accept free tags as variations; soft-boundary
+    remainders require all-tag content (Morning Piano yes, Morning Dance no).
+    """
+    stem_hit = match_prefix_boundary(title, stem)
+    if stem_hit is not None:
+        stem_remainder, is_hard, has_parens = stem_hit
+        interp = interpret_remainder(stem_remainder, allow_dual=not has_parens)
+        if not (interp.free_tags and not is_hard):
+            score_key = interp.score_key or _folder_score_key(folder)
+            return TitleCandidate(
+                remainder=stem_remainder,
+                parts=interp.parts,
+                part=interp.part,
+                score_key=score_key,
+                variations=interp.variations,
+                free_tags=interp.free_tags,
+                rules_fired=interp.rules_fired,
+            )
+        # Soft-boundary remainder with free tags: not this title via the stem
+        # (e.g. "Mack_The_Knife__Bobby_Darin Score-Piano" slug words). Fall
+        # through to folder matching below.
     if folder:
-        folder_remainder = match_prefix(title, folder)
-        if folder_remainder is not None:
-            folder_interp = interpret_remainder(folder_remainder)
-            if folder_interp.free_tags:
+        folder_hit = match_prefix_boundary(title, folder)
+        if folder_hit is not None:
+            folder_remainder, folder_hard, folder_parens = folder_hit
+            folder_interp = interpret_remainder(folder_remainder, allow_dual=not folder_parens)
+            if folder_interp.free_tags and not folder_hard:
                 return None
             stem_interp = interpret_remainder(clean_stem(stem))
             score_key = stem_interp.score_key or folder_interp.score_key or _folder_score_key(folder)

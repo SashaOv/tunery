@@ -4,7 +4,7 @@ import pikepdf
 import pytest
 import yaml
 
-from tunery.render import render
+from tunery.render import output_path_for_label, render
 
 
 def create_pdf(path: Path, page_count: int = 1) -> Path:
@@ -89,3 +89,8 @@ def test_missing_part_reported(tmp_path: Path, capsys) -> None:
 
     out = capsys.readouterr().out
     assert 'missing Piano for "BbOnly"' in out
+
+
+def test_output_suffix_not_doubled(tmp_path: Path) -> None:
+    assert output_path_for_label(tmp_path / "book.RS.pdf", "RS") == tmp_path / "book.RS.pdf"
+    assert output_path_for_label(tmp_path / "spot.Piano.pdf", "Piano") == tmp_path / "spot.Piano.pdf"

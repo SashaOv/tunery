@@ -69,10 +69,15 @@ structure on top. `file:` layouts keep working unchanged.
   trailing `(1)`.
 - **Boundaries:** hard are ` - `, `-`, `.`, `,`, `( )`, `[ ]`, `:`; soft is a
   space. A title may end at a soft boundary only when everything after it is
-  tags (`Morning Piano` is a Morning part, `Morning Dance` is not).
+  tags (`Morning Piano` is a Morning part, `Morning Dance` is not). After a
+  hard boundary, words no rule takes are free tags (`mo-better-blues--JBM
+  Arrangement-Piano` → Piano, free tags "JBM Arrangement").
 - **Title match happens at lookup.** Layout title `T` matches a name text
-  that starts with `T` at a boundary: exact squashed first, then fuzzy
-  (ratio ≥ 0.9) for `match: fuzzy` libraries. What follows `T` in the stem is
+  that starts with `T` at a boundary: exact squashed first, then fuzzy for
+  `match: fuzzy` libraries. Fuzzy compares `T` with each word prefix of the
+  name text (ratio ≥ 0.9, never a substring further in), so the words after
+  the matched prefix still give the part (`Si Tu Vois Ma Mare` →
+  `si-tu-vois-ma-mere-…-lead-sheet-C_Major`, Lead Sheet). What follows `T` in the stem is
   interpreted as tags. That is why `Partido Alto` keeps "Alto" and
   `Fascinating Rhythm` keeps "Rhythm". When only the folder matches, the
   stem's tags are read right to left up to the first word that isn't a tag.
@@ -101,11 +106,15 @@ structure on top. `file:` layouts keep working unchanged.
   (bass clr) → Bb; Trumpet (tpt, tp, trumpet in bb) → Bb; Flugelhorn (flugel)
   → Bb; Trombone (bone, tbn) → Bass Clef; Flute → Concert; Vocal (voice, vx)
   → Concert; Piano (pno, keys, electric piano), Guitar (gtr, electric
-  guitar), Bass (bss, electric bass), Drums (drm), Percussion → Rhythm.
-  `_` joins words (`Bass_Clarinet`, `Alto_Saxophone`).
+  guitar), Bass (bss, electric bass), Drums (drm), Percussion → Rhythm; Bass
+  Trombone → Bass Clef; Saxophone (sax, saxophone: a sax of unknown key, so
+  `Tenro Sax part` is not taken for the concert chart) → no group. `_` joins
+  words (`Bass_Clarinet`, `Alto_Saxophone`).
 - **Dual-instrument scores:** a name that joins two instruments in one
   segment (`Piano:Guitar`, `piano-guitar`, `PianoGuitar`, `pnoguit`) is one
-  score both instruments read. The item has both parts, Piano and Guitar.
+  score both instruments read. The item has both parts, Piano and Guitar. A
+  multi-word instrument (`Bass Clarinet`) is not a dual, and an instrument
+  in parentheses is a variation, not half of a dual.
 - **Part of an item:** the rightmost instrument (+ role), or both instruments
   of a dual-instrument score. If there is none, the group, then the kind,
   then the library's default part. An earlier, unrelated instrument is a
@@ -146,8 +155,11 @@ structure on top. `file:` layouts keep working unchanged.
     - Bass
     - Piano
 - **Order:** libraries in priority order; the first library with an item on
-  any step of the chain wins, at its earliest step. So a Vault Concert chart
-  beats a real-book page for a Piano request.
+  any step of any requested part's chain wins the title, at each part's
+  earliest step. So a Vault Concert chart beats a real-book page for a Piano
+  request. All parts of a title come from that library: a part it lacks is
+  reported missing, never filled from a lower library, so one title's parts
+  belong to one arrangement.
 - **Ties** within one library and step: fewest variation/free tags, then path
   order. Print a visible warning naming the candidates.
 - **Indexed PDF libraries** are concert-only sources: they answer any part
@@ -156,6 +168,7 @@ structure on top. `file:` layouts keep working unchanged.
   feature's semantics). Output naming is unchanged: `<stem>.<K>.pdf`.
 - **Output:** `--part P` other than Concert writes `<stem>.<P>.pdf`; a
   combined value writes `<stem>.<A>+<B>.pdf` (`RS` stays `<stem>.RS.pdf`).
+  When `-o` already ends in `.<P>`, it is used as given.
 - **Score key per chart:** a chart's `key:` (`- title: Ain't MisBehavin'` /
   `key: F`) keeps only candidates whose score key matches. A key given
   without a mode matches any mode. If no candidate in a library matches, use
@@ -249,8 +262,20 @@ the repo).
 
 ### LIB4: Title-only combo layouts render the requested part from a nested folder library
 
-Status: planned, approved 2026-10-14 (LIB4.6–LIB4.8, verbosity levels and
-`--part Rhythm` acceptance added by the author after approval, same day)
+Status: executed, pending author verification (LIB4.6–LIB4.8, verbosity
+levels and `--part Rhythm` acceptance added by the author after approval on
+2026-10-14; LIB4.9 added 2026-10-15)
+
+Review 2026-10-15:
+- Suite: 128 passed.
+- Live run (with LIB4.9): 15 Vault titles, 6 rb-index, `not found "It Don't
+  Mean Thing"`; nested bookmarks for Mack the Knife and Straighten Up only;
+  `-vv` lists candidates and rules.
+- Extra: a `tie for "Steamroller Blues"` warning, although the tie-break
+  picks the right file (see LIB5).
+- Before LIB4.9, Si Tu Vois Ma Mare took the Alto Sax chart (fuzzy match
+  consumed the whole stem). Moondance added `Tenro Sax part` as its concert
+  chart. Both are fixed and covered by tests.
 
 **Improvement:** run from `apps/JBM`,
 `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm` renders the
@@ -301,11 +326,18 @@ books.
   key (from folder or stem), falling back with a warning. Tests: the
   `Aint Misbehavin` fixture with `key: F` picks `Concert F`, `key: Bb` picks
   `Concert Bb`, `key: E` warns and falls back.
+- **LIB4.9** Fine-tune from live runs (author, reviewed 2026-10-15):
+  - fuzzy titles match word prefixes, keeping the part (Si Tu Vois Ma Mare);
+  - after a hard boundary, unknown words are free tags;
+  - multi-word instruments and parenthesized instruments are not duals;
+  - Bass Trombone and an unspecified Saxophone are added to the vocabulary;
+  - a title's parts all come from one library;
+  - `-o` ending in the part label is not suffixed again.
 
 **Acceptance:**
 
 - *Scripted (pytest, the existing gate):* all existing tests, including the
-  keys tests, pass unchanged; the LIB4.1–LIB4.8 tests pass.
+  keys tests, pass unchanged; the LIB4.1–LIB4.9 tests pass.
 - *Live (executor):* from `/Users/sasha/personal/wip/apps/JBM`, run
   `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm -v -o
   <scratchpad>/26-10-21.Rhythm.pdf`. Observe:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename
+from tunery.parts import fuzzy_title_prefix
 
 
 MatchMode = Literal["exact", "fuzzy"]
@@ -213,40 +214,7 @@ class DirectoryLibrary:
 
         requested = canonical_part_name(requested_part)
         chain = chain_for_part(requested)
-        # Gather candidates matching the title (exact prefix; fuzzy if enabled).
-        scored: list[tuple[Path, object]] = []
-        for pdf_path, folder in self._items:
-            cand = match_candidate(title, pdf_path.stem, folder)
-            if cand is not None:
-                scored.append((pdf_path, cand))
-        if not scored and self.match == "fuzzy":
-            from tunery.parts import squash_text
-
-            from rapidfuzz import fuzz as _fuzz
-
-            t_sq = squash_text(title)
-            for pdf_path, folder in self._items:
-                for text in (pdf_path.stem, folder or ""):
-                    if not text:
-                        continue
-                    if _fuzz.ratio(t_sq, squash_text(text)) >= 90:
-                        cand = match_candidate(text, pdf_path.stem, folder)
-                        # Fallback: interpret remainder as whole stem tags.
-                        if cand is None:
-                            from tunery.parts import TitleCandidate, interpret_remainder
-
-                            interp = interpret_remainder(pdf_path.stem)
-                            cand = TitleCandidate(
-                                remainder=pdf_path.stem,
-                                parts=interp.parts,
-                                part=interp.part,
-                                score_key=interp.score_key,
-                                variations=interp.variations,
-                                free_tags=[],
-                                rules_fired=interp.rules_fired,
-                            )
-                        scored.append((pdf_path, cand))
-                        break
+        scored = self.all_candidates(title)
         if score_key is not None and scored:
             from tunery.keys import normalize_key_name
 
@@ -283,7 +251,12 @@ class DirectoryLibrary:
         return None
 
     def all_candidates(self, title: str) -> list[tuple[Path, object]]:
-        """All title-matching candidates with interpretation, path order."""
+        """All title-matching candidates with interpretation, path order.
+
+        Exact prefix matches first; for fuzzy libraries with none, match the
+        title against word prefixes of each name text and interpret what
+        follows the matched prefix as tags.
+        """
         from tunery.parts import match_candidate
 
         out: list[tuple[Path, object]] = []
@@ -291,6 +264,17 @@ class DirectoryLibrary:
             cand = match_candidate(title, pdf_path.stem, folder)
             if cand is not None:
                 out.append((pdf_path, cand))
+        if out or self.match != "fuzzy":
+            return out
+        for pdf_path, folder in self._items:
+            for text in (pdf_path.stem, folder):
+                prefix = fuzzy_title_prefix(title, text) if text else None
+                if prefix is None:
+                    continue
+                cand = match_candidate(prefix, pdf_path.stem, folder)
+                if cand is not None:
+                    out.append((pdf_path, cand))
+                    break
         return out
 
 
@@ -450,6 +434,60 @@ class LibraryCollection:
                 match = library.lookup_title(title)
                 if match is not None:
                     return match, "Concert"
+        return None
+
+    def select_subparts(
+        self, title: str, subparts: list[str], score_key: str | None = None
+    ) -> tuple[list[tuple[str, str, LibraryMatch]], list[str]] | None:
+        """Resolve several subparts with per-title library lock.
+
+        The winning library is the highest-priority one with a chain hit on
+        ANY requested subpart. Remaining subparts resolve only within the
+        winner (missing, never falling through to lower libraries), so one
+        title's parts always come from a single arrangement.
+        Returns (hits, missing) or None when no library has the title on any
+        requested chain.
+        """
+        from tunery.parts import canonical_part_name
+
+        title_found = False
+        for library in reversed(self._libraries):
+            if isinstance(library, LibraryCollection):
+                result = library.select_subparts(title, subparts, score_key)
+                if result is not None:
+                    return result
+                continue
+            if isinstance(library, DirectoryLibrary):
+                if library.all_candidates(title):
+                    title_found = True
+                hits: list[tuple[str, str, LibraryMatch]] = []
+                missing: list[str] = []
+                any_hit = False
+                for sub in subparts:
+                    requested_canon = canonical_part_name(sub)
+                    hit = library.select_part(title, requested_canon, score_key)
+                    if hit is None:
+                        missing.append(requested_canon)
+                    else:
+                        any_hit = True
+                        source, step, _ = hit
+                        hits.append(
+                            (requested_canon, step, LibraryMatch(title=title, source=source))
+                        )
+                if not any_hit:
+                    continue
+                return hits, missing
+            match = library.lookup_title(title)
+            if match is not None:
+                title_found = True
+                return (
+                    [(canonical_part_name(s), "Concert", match) for s in subparts],
+                    [],
+                )
+        if title_found:
+            from tunery.parts import canonical_part_name as _canon
+
+            return [], [_canon(s) for s in subparts]
         return None
 
     def all_candidates(self, title: str) -> list[tuple[str, Path, object | None]]:
