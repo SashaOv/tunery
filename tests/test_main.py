@@ -12,8 +12,9 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         keys: list[str],
         base: Path | None = None,
         part: str | None = None,
+        verbose: int = 0,
     ):
-        calls.append((layout, output, keys, base, part))
+        calls.append((layout, output, keys, base, part, verbose))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -26,6 +27,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             [],
             None,
             None,
+            0,
         )
     ]
 
@@ -39,8 +41,9 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         keys: list[str],
         base: Path | None = None,
         part: str | None = None,
+        verbose: int = 0,
     ):
-        calls.append((layout, output, keys, base, part))
+        calls.append((layout, output, keys, base, part, verbose))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -58,6 +61,9 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "proj",
             "--part",
             "Piano",
+            "-v",
+            "--verbose",
+            "1",
         ]
     )
 
@@ -68,6 +74,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             ["Bb", "Eb,F"],
             Path("proj"),
             "Piano",
+            1,
         )
     ]
 

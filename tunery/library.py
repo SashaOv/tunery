@@ -204,12 +204,7 @@ class DirectoryLibrary:
     def select_part(
         self, title: str, requested_part: str
     ) -> tuple[Path, str, list[Path]] | None:
-        """Select a file for title+part via substitution chains.
-
-        Returns (source, matched_step, tied_candidates) or None. First library
-        with an item on any chain step wins, at its earliest step. Ties use
-        fewest tags then path order, with a visible warning.
-        """
+        """Select a file for title+part via substitution chains."""
         from tunery.parts import (
             canonical_part_name,
             chain_for_part,
@@ -270,6 +265,17 @@ class DirectoryLibrary:
                 print(f'tie for "{title}" ({step}): {names}')
             return best_path, step, [p for p, _ in step_hits]
         return None
+
+    def all_candidates(self, title: str) -> list[tuple[Path, object]]:
+        """All title-matching candidates with interpretation, path order."""
+        from tunery.parts import match_candidate
+
+        out: list[tuple[Path, object]] = []
+        for pdf_path, folder in self._items:
+            cand = match_candidate(title, pdf_path.stem, folder)
+            if cand is not None:
+                out.append((pdf_path, cand))
+        return out
 
 
 class IndexedTune(BaseModel):
@@ -429,6 +435,21 @@ class LibraryCollection:
                 if match is not None:
                     return match, "Concert"
         return None
+
+    def all_candidates(self, title: str) -> list[tuple[str, Path, object | None]]:
+        """All candidates per library for -vv, highest priority first."""
+        out: list[tuple[str, Path, object | None]] = []
+        for library in reversed(self._libraries):
+            if isinstance(library, LibraryCollection):
+                out.extend(library.all_candidates(title))
+            elif isinstance(library, DirectoryLibrary):
+                for path, cand in library.all_candidates(title):
+                    out.append((str(library.path), path, cand))
+            else:
+                match = library.lookup_title(title)
+                if match is not None:
+                    out.append(("indexed", match.source, None))
+        return out
 
 
 class LibraryRecord(BaseModel):

@@ -196,6 +196,7 @@ def process_file_entry(
     libraries: LibraryCollection | None = None,
     key: str = CONCERT_KEY,
     part: str = "Concert",
+    verbose: int = 0,
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
@@ -205,6 +206,8 @@ def process_file_entry(
     """
     matched_title: str | None = None
     score: float | None = None
+    selected_step: str | None = None
+    requested_part = part
     # `file:` entries with explicit page selections address the named PDF
     # directly and skip key edition handling; everything else resolves the
     # per-key edition source.
@@ -267,6 +270,7 @@ def process_file_entry(
             selected = libraries.select_part(title, part) if libraries else None
             if selected is not None:
                 library_match, _step = selected
+                selected_step = _step
                 input_pdf_path = library_match.source
                 page = entry.page if entry.page is not None else library_match.page
                 length = (
@@ -286,6 +290,26 @@ def process_file_entry(
         notes=entry.notes,
     )
 
+    if verbose >= 1 and not entry.file:
+        from tunery.parts import canonical_part_name
+
+        requested_canon = canonical_part_name(requested_part)
+        matched = selected_step or requested_canon
+        print(f'  "{title}" {requested_canon}: {input_pdf_path.name}')
+        if matched != requested_canon:
+            print(f"  {requested_canon} → {matched}")
+    if verbose >= 2 and not entry.file and libraries is not None:
+        for lib_desc, path, cand in libraries.all_candidates(title):
+            if cand is None:
+                print(f'  candidate "{title}" in "{lib_desc}" ({path.name}): indexed')
+            else:
+                print(
+                    f'  candidate "{title}" in "{lib_desc}" ({path.name}): '
+                    f"part={cand.part}, key={cand.score_key}, "
+                    f"var={cand.variations}, free={cand.free_tags}, "
+                    f"rules={cand.rules_fired}"
+                )
+
     return SuccessResult(
         title=title,
         page=entry_page,
@@ -304,12 +328,13 @@ def process_items(
     key: str,
     show_key: bool,
     part: str = "Concert",
+    verbose: int = 0,
 ) -> None:
     """Process layout items recursively for one key edition."""
     for item in items:
         if isinstance(item, SectionEntry):
             composer.start_section(item.section)
-            process_items(item.body, default_dir, composer, libraries, key, show_key, part)
+            process_items(item.body, default_dir, composer, libraries, key, show_key, part, verbose)
             composer.end_section()
         else:
             result = process_file_entry(
@@ -319,6 +344,7 @@ def process_items(
                 libraries,
                 key,
                 part,
+                verbose,
             )
             if show_key:
                 print(f"[{key}] {result.format()}")
@@ -332,6 +358,7 @@ def render(
     keys: list[str] | None = None,
     base: Path | None = None,
     part: str | None = None,
+    verbose: int = 0,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -385,7 +412,7 @@ def render(
         key_output = output_path_for_key(part_output, key)
         with Composer(key_output, autosave=False) as composer:
             process_items(
-                layout_entries, default_dir, composer, libraries, key, show_key, requested_part
+                layout_entries, default_dir, composer, libraries, key, show_key, requested_part, verbose
             )
             composer.save()
 

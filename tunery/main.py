@@ -42,10 +42,26 @@ def render_command(
             help="Requested part with substitution chains (default: Concert).",
         ),
     ] = None,
+    verbose: Annotated[
+        int,
+        Parameter(
+            ["--verbose"],
+            help="Verbosity level 0-2 (default 0).",
+        ),
+    ] = 0,
+    v: Annotated[
+        int,
+        Parameter(
+            ["-v"],
+            count=True,
+            help="Increase verbosity (-v level 1, -vv level 2).",
+        ),
+    ] = 0,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
-    render(layout, output_path, keys, base, part)
+    level = max(verbose, v)
+    render(layout, output_path, keys, base, part, level)
 
 
 @app.command(name="lookup")
