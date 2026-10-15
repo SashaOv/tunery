@@ -46,11 +46,81 @@ class DirectoryLibrary:
         self._file_index = FuzzyIndex[Path]()
         self._titles: dict[str, Path] = {}
         self._files: dict[str, Path] = {}
-        for pdf_path in sorted(self.path.glob("*.pdf")):
+        self._folders: dict[Path, str | None] = {}
+        for pdf_path, folder in sorted(
+            self._discover(), key=lambda item: str(item[0])
+        ):
+            self._folders[pdf_path] = folder
             self._title_index.add(pdf_path.stem, pdf_path)
             self._file_index.add(pdf_path.name, pdf_path)
             self._titles.setdefault(normalize_key(pdf_path.stem), pdf_path)
             self._files.setdefault(normalize_key(pdf_path.name), pdf_path)
+            if folder:
+                self._title_index.add(folder, pdf_path)
+                self._titles.setdefault(normalize_key(folder), pdf_path)
+
+    @staticmethod
+    def _is_transparent(name: str) -> bool:
+        return name.startswith("_") and name != "_archive"
+
+    def _discover(self) -> list[tuple[Path, str | None]]:
+        """Every PDF below the library, with innermost title folder.
+
+        Follows symlinks without revisiting a real directory. `_archive`
+        subtrees are skipped; `_.*` folders are transparent (name ignored).
+        """
+        import os
+
+        found: list[tuple[Path, str | None]] = []
+        visited: set[tuple[int, int]] = set()
+        # Stack of (lexical dir path, title-folder chain from root).
+        # Chain holds folder names from library root, transparent names omitted.
+        try:
+            root_stat = self.path.stat()
+            visited.add((root_stat.st_dev, root_stat.st_ino))
+        except OSError:
+            pass
+        stack: list[tuple[Path, list[str]]] = [(self.path, [])]
+        while stack:
+            current, chain = stack.pop()
+            try:
+                with os.scandir(current) as entries:
+                    dirs: list[os.DirEntry[str]] = []
+                    files: list[os.DirEntry[str]] = []
+                    for entry in entries:
+                        try:
+                            if entry.is_dir(follow_symlinks=True):
+                                dirs.append(entry)
+                            elif entry.is_file(follow_symlinks=True):
+                                files.append(entry)
+                        except OSError:
+                            continue
+                    for entry in sorted(files, key=lambda e: e.name):
+                        if entry.name.lower().endswith(".pdf"):
+                            pdf_path = (Path(current) / entry.name).resolve()
+                            # Innermost title folder = last non-transparent chain element.
+                            folder = chain[-1] if chain else None
+                            found.append((pdf_path, folder))
+                    for entry in sorted(dirs, key=lambda e: e.name):
+                        if entry.name == "_archive":
+                            continue
+                        try:
+                            st = entry.stat(follow_symlinks=True)
+                        except OSError:
+                            continue
+                        key = (st.st_dev, st.st_ino)
+                        if key in visited:
+                            continue
+                        visited.add(key)
+                        if self._is_transparent(entry.name):
+                            stack.append((Path(current) / entry.name, chain))
+                        else:
+                            stack.append(
+                                (Path(current) / entry.name, [*chain, entry.name])
+                            )
+            except OSError:
+                continue
+        return found
 
     def lookup_title(
         self, title: str, key: str | None = None
