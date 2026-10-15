@@ -28,11 +28,18 @@ structure on top. `file:` layouts keep working unchanged.
 
 ## Configuration
 
-- **Discovery:** start at the base directory (`--base`, default: the logical
-  working directory, as `file:` resolution already uses) and walk up at most
-  eight parents. In each directory look for `tunery.yaml` and `.tunery.yaml`.
-  The first directory holding one wins; holding both is an error. Configs are
-  not merged. Without one, use the base directory as a directory library and
+- **Discovery:** start at the base directory and walk up lexically (symlinks
+  are not resolved). The base directory is chosen as follows:
+  - `--base` when it is given;
+  - for a relative layout path, and for commands without a layout, the
+    logical working directory (as `file:` resolution already uses), walking
+    up at most eight parents as today;
+  - for an absolute layout path, the layout's directory, walking up to the
+    filesystem root.
+
+  In each directory look for `tunery.yaml` and `.tunery.yaml`. The first
+  directory holding one wins; holding both is an error. Configs are not
+  merged. Without one, use the base directory as a directory library and
   print the existing notice.
 - Library records keep their fields (`library`, `source`, `shift`, `match`)
   and gain `type`. Forced per-item metadata in the record overrides
@@ -94,23 +101,50 @@ structure on top. `file:` layouts keep working unchanged.
   (bass clr) → Bb; Trumpet (tpt, tp, trumpet in bb) → Bb; Flugelhorn (flugel)
   → Bb; Trombone (bone, tbn) → Bass Clef; Flute → Concert; Vocal (voice, vx)
   → Concert; Piano (pno, keys, electric piano), Guitar (gtr, electric
-  guitar), Piano+Guitar (piano-guitar, Piano:Guitar), Bass (bss, electric
-  bass), Drums (drm), Percussion → Rhythm. `_` joins words
-  (`Bass_Clarinet`, `Alto_Saxophone`).
-- **Part of an item:** the rightmost instrument (+ role). If there is none,
-  the group, then the kind, then the library's default part. An earlier,
-  unrelated instrument is a variation (`All of Me (Vocal)-Piano` → Piano,
-  variation "vocal"). A score key is a variation.
+  guitar), Bass (bss, electric bass), Drums (drm), Percussion → Rhythm.
+  `_` joins words (`Bass_Clarinet`, `Alto_Saxophone`).
+- **Dual-instrument scores:** a name that joins two instruments in one
+  segment (`Piano:Guitar`, `piano-guitar`, `PianoGuitar`, `pnoguit`) is one
+  score both instruments read. The item has both parts, Piano and Guitar.
+- **Part of an item:** the rightmost instrument (+ role), or both instruments
+  of a dual-instrument score. If there is none, the group, then the kind,
+  then the library's default part. An earlier, unrelated instrument is a
+  variation (`All of Me (Vocal)-Piano` → Piano, variation "vocal"). A score
+  key is a variation.
 - **Can't interpret:** words no rule takes are free tags (`lead-sheet-d`,
   `skin p`). The item stays reachable by its name texts; nothing is guessed.
 
 ## Selection
 
 - **Part selection:** `render --part <Part>`; default `Concert`.
-- **Substitution chains:** Instrument N → Instrument → section → group →
-  Concert. Piano/Guitar → Piano+Guitar → Rhythm → Concert. Bass → Rhythm →
-  Concert. The Concert step takes Concert or untagged, then Lead Sheet, then
-  Vocal/Melody, then other concert-group instruments.
+  - Each `--part` option produces its own output (`--part Bass --part Piano`
+    → two files).
+  - A comma-separated value combines parts in one output
+    (`--part Bass,Piano` → one file).
+- **Rhythm section:** `Rhythm`, `RS` and `Rhythm Section` select the
+  combination `Piano,Guitar,Bass,Drums`. Each member follows its own chain,
+  so a title without rhythm parts falls back to concert-key instruments and
+  the lead sheet.
+- **Substitution chains:**
+  - Instrument N → Instrument → section → group → Concert.
+  - Piano → Rhythm → Concert.
+  - Guitar → Piano → Rhythm → Concert.
+  - A Piano/Guitar score matches the Piano and the Guitar steps directly.
+  - Bass → Rhythm → Concert.
+  - Drums → Rhythm → Concert.
+  - The Concert step takes Concert or untagged, then Lead Sheet, then
+    Vocal/Melody, then other concert-group instruments.
+  - The "Rhythm" step matches items tagged `Rhythm` or `Rhythm Section`.
+- **Combined parts:** each requested part resolves through its chain. If two
+  parts resolve to the same file, it is included once. A part whose chain
+  finds nothing for a found title is reported (`missing <part> for
+  "<title>"`). A title with one resulting file keeps a flat bookmark. A title
+  with several gets a title bookmark with one child per file, named by the
+  file's part label (a dual score is `Piano/Guitar`):
+  - All of Me
+  - Autumn Leaves
+    - Bass
+    - Piano
 - **Order:** libraries in priority order; the first library with an item on
   any step of the chain wins, at its earliest step. So a Vault Concert chart
   beats a real-book page for a Piano request.
@@ -120,17 +154,27 @@ structure on top. `file:` layouts keep working unchanged.
   request with the indexed pages, as today.
 - **Keys:** `-k K` selects part group `K` with no substitution (the keys
   feature's semantics). Output naming is unchanged: `<stem>.<K>.pdf`.
-- **Output:** `--part P` other than Concert writes `<stem>.<P>.pdf`.
-- **Trace:** `-v` prints per title the candidates (library, file, part,
-  variation and free tags), the chain step taken, and the rules that fired.
+- **Output:** `--part P` other than Concert writes `<stem>.<P>.pdf`; a
+  combined value writes `<stem>.<A>+<B>.pdf` (`RS` stays `<stem>.RS.pdf`).
+- **Score key per chart:** a chart's `key:` (`- title: Ain't MisBehavin'` /
+  `key: F`) keeps only candidates whose score key matches. A key given
+  without a mode matches any mode. If no candidate in a library matches, use
+  all its candidates and warn `no <key> version of "<title>"`. The layout's
+  `key` is the score key; `-k` is the instrument key.
+- **Verbosity:**
+  - default: found / not found per chart, tie warnings, missing parts;
+  - `-v` / `--verbose 1`: additionally, per title, the file used for each
+    part and every substitution taken (`Piano → Concert`);
+  - `-vv` / `--verbose 2`: additionally, every candidate (library, file,
+    part, variation, free tags) and the name-interpretation rules that
+    fired.
 
 ## Open questions
 
 - Q16 Groups: confirm Trombone → Bass Clef, and Bass in Rhythm only.
 - Layout-level part selection and per-title overrides (`part: Horn 1`): exact
   syntax.
-- Default for `--base` when the layout lives in another tree: is the working
-  directory enough, or should the layout directory be searched after it?
+- Output name for combined values: `<stem>.<A>+<B>.pdf` is a proposal.
 
 ## Facts
 
@@ -174,41 +218,62 @@ the repo).
     `It Don't Mean Thing` is a layout typo.
   - `Si Tu Vois Ma Mare` needs `match: fuzzy` (folder `Si Tu Voir Ma Mere`,
     stem `si-tu-vois-ma-mere-…`).
+  - With `--part Rhythm` and the layout's `key: F` on `Ain't MisBehavin'`:
+    - the same 15 Vault titles;
+    - `Mack the Knife` → Piano, Guitar, Bass (`…Score-Piano`, `-Guitar`,
+      `-Bass`) and `Straighten Up and Fly Right` → Piano, Guitar
+      (`…-Piano`, `-Electric_Guitar`); every other title is one chart;
+    - `Ain't MisBehavin'` → `Aint Misbehavin - Concert F/…-Piano`, no tie;
+    - ties left: `Mo Better Blues`, `All of Me`, `Girl From Ipanema`;
+    - Heartaches, Margaritaville, Si Tu Vois Ma Mare, Fascinating Rhythm,
+      Steamroller Blues and Girl From Ipanema fall back to their concert
+      chart; none of these titles has a Drums part in Vault, and only Mack
+      the Knife has Bass.
+- **Rhythm section vs `26-09-15.rs.yaml`** (2026-10-14). Applied to the parts
+  available in `26-09-15.yaml`, the RS combination reproduces the hand-made
+  rs layout for 22 of 23 titles. Examples: Poinciana → Concert + Bass,
+  I Can't Help It → Piano + Bass + Drums, Mo Better Blues → Rhythm + Bass +
+  Drums; titles with only Concert/Bb stay one flat chart. The exception,
+  Norwegian Wood, adds its Piano:Guitar dual score, which both Piano and
+  Guitar resolve to (included once). The Guitar → Piano step is needed for
+  I Can't Help It, whose guitar player reads the piano part; otherwise its
+  concert sheet would be added.
 - **Config discovery today** resolves the layout directory physically. From
   `JBM/GDrive/Shows/26-10-21` (`GDrive` → Google Drive), after the author
   removed the Drive-side `tunery.yaml`, it finds no config and renders
   nothing from Vault. `apps/JBM/tunery.yaml` (rb-index, then `./Vault`) is
-  reachable only through the logical tree.
+  reachable only through the logical tree. Its `./Vault` record has
+  `match: fuzzy` (author, 2026-10-14).
 
 ## Builds
 
 ### LIB4: Title-only combo layouts render the requested part from a nested folder library
 
-Status: planned, awaiting author checkpoint
+Status: planned, approved 2026-10-14 (LIB4.6–LIB4.8, verbosity levels and
+`--part Rhythm` acceptance added by the author after approval, same day)
 
 **Improvement:** run from `apps/JBM`,
-`tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Piano` renders 15
-titles from the JBM Vault, each with the part chosen by the chains above.
-Six come from rb-index, and the run warns about ties. Today the same layout
+`tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm` renders the
+rhythm-section book: 15 titles from the JBM Vault, each with its rhythm
+parts chosen by the chains above. Six come from rb-index, and the run warns
+about ties and missing parts. Today the same layout
 finds no config, or, with the old Drive config, takes everything from real
 books.
 
-**Prerequisite (not a LIB4 patch):** commit the existing uncommitted keys
-feature (`tunery/keys.py`, `tests/test_keys.py`, `library.py`, `render.py`,
-`main.py`, `tests/test_main.py`; suite: 76 passed on 2026-10-14) as its own
-commit, per Q1. The deletions of `AGENTS.md`, `CLAUDE.md` and
-`docs/GUIDELINES.md` are the author's and stay out of it.
+**Prerequisite (done):** the keys feature is committed (`3f53c4d`).
 
 **Patches:**
 
-- **LIB4.1** Discover configuration from `--base`. Add `--base` (default:
-  logical working directory) to `render` and `lookup`. Search `tunery.yaml`
-  and `.tunery.yaml` up from it; both in one directory is an error. Tests:
-  each file name, both present, walk through a symlinked directory, notice
-  when none.
+- **LIB4.1** Discover configuration from the base directory. Add `--base`
+  to `render` and `lookup`. Default it as in Configuration: relative layout
+  path → logical working directory; absolute layout path → layout directory,
+  walking up to the root. Search `tunery.yaml` and `.tunery.yaml`; both in
+  one directory is an error. Tests: each file name, both present, relative
+  and absolute layout paths through a symlinked directory, explicit
+  `--base`, notice when none.
 - **LIB4.2** Interpret item names (`tunery/parts.py`): normalization,
   boundaries, title match with remainder, combo-profile rules right to left,
-  vocabulary, part/variation/free tags. Unit tests on the combo names in
+  vocabulary, dual-instrument scores, part/variation/free tags. Unit tests on the combo names in
   Facts and every 26-10-02 Vault file name.
 - **LIB4.3** Discover directory libraries recursively: symlinks without
   cycles, `_archive` excluded, `_.*` transparent, name texts = stem +
@@ -218,31 +283,46 @@ commit, per Q1. The deletions of `AGENTS.md`, `CLAUDE.md` and
   `<stem>.<Part>.pdf` output, indexed libraries as concert sources. Fixture:
   a temp tree with the Vault file names of the 15 titles. It asserts each
   pick from Facts and the tie warnings.
-- **LIB4.5** Trace with `-v`: per title, candidates, chain step and fired
-  rules.
+- **LIB4.5** Verbosity: `-v`/`--verbose 1` reports files used and
+  substitutions; `-vv`/`--verbose 2` adds candidates and fired rules. Tests:
+  each level's lines on the LIB4.4 fixture; default output unchanged apart
+  from warnings.
+- **LIB4.6** Combine parts: one output per `--part` option; a
+  comma-separated value combines its parts in one file. Same-file parts are
+  included once, missing parts are reported, and a title with several files
+  gets nested part bookmarks (one file stays flat). Tests: two `--part`
+  options → two outputs; `--part Bass,Piano` on a two-part title → nested
+  bookmarks Bass, Piano; on a concert-only title → one flat chart.
+- **LIB4.7** Rhythm section: `Rhythm`/`RS`/`Rhythm Section` expand to
+  `Piano,Guitar,Bass,Drums`, with the Guitar and Drums chains. Fixture: the
+  26-09-15 part files from `_Petes`/`SheetMusic`. It asserts the 23 picks in
+  Facts (22 as in `26-09-15.rs.yaml`, Norwegian Wood plus Piano:Guitar).
+- **LIB4.8** Score key per chart: layout `key:` filters candidates by score
+  key (from folder or stem), falling back with a warning. Tests: the
+  `Aint Misbehavin` fixture with `key: F` picks `Concert F`, `key: Bb` picks
+  `Concert Bb`, `key: E` warns and falls back.
 
 **Acceptance:**
 
 - *Scripted (pytest, the existing gate):* all existing tests, including the
-  keys tests, pass unchanged; the LIB4.1–LIB4.5 tests pass.
+  keys tests, pass unchanged; the LIB4.1–LIB4.8 tests pass.
 - *Live (executor):* from `/Users/sasha/personal/wip/apps/JBM`, run
-  `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Piano -o
-  <scratchpad>/26-10-21.Piano.pdf`. Observe:
-  - 15 titles found under `Vault/` with the files listed in Facts;
+  `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm -v -o
+  <scratchpad>/26-10-21.Rhythm.pdf`. Observe:
+  - 15 titles found under `Vault/` with the files listed in Facts
+    (`--part Rhythm`), including `Ain't MisBehavin'` from `Concert F`;
+  - nested bookmarks for `Mack the Knife` (Piano, Guitar, Bass) and
+    `Straighten Up and Fly Right` (Piano, Guitar), flat bookmarks elsewhere;
   - 6 found in rb-index books;
   - `not found "It Don't Mean Thing"`;
-  - tie warnings for `Ain't MisBehavin'`, `Mo Better Blues`, `All of Me`
-    and `Girl From Ipanema`;
-  - a PDF with 21 charts.
-  With `-v`, each title lists its candidates.
+  - tie warnings for `Mo Better Blues`, `All of Me` and `Girl From Ipanema`;
+  - missing-part reports (e.g. Drums), and with `-v` the substitutions;
+  - the PDF's bookmark tree matches the above.
+  Then run once more with `-vv` and observe candidates and rules per title.
 
 **Author action required at completion:**
 
-- Add `match: fuzzy` to the `./Vault` record in
-  `/Users/sasha/personal/wip/apps/JBM/tunery.yaml`; without it, `Si Tu Vois
-  Ma Mare` is not found (live clause: 15 Vault titles).
-- Review the rendered PDF musically, and choose the `Ain't Misbehavin` key
-  (a `file:` override in the layout until variation selection exists).
+- Review the rendered PDF musically.
 
 ## Backlog
 
@@ -252,9 +332,9 @@ commit, per Q1. The deletions of `AGENTS.md`, `CLAUDE.md` and
 - Sibling-prefix grouping for name texts (rules in Facts).
 - Layout-level part selection, named editions (`norm`, `rs`) and per-title
   part overrides; durable selections in config.
-- Several parts per run, one output per part; full score with all parts.
+- Full score: every part of every title in one file.
 - `--explicit-bookmark-hierarchy` for the `_ ` bookmark prefix.
-- Variation selection (score key, arranger, tags).
+- Variation selection by arranger and free tags (score key: LIB4.8).
 - Forced per-item metadata in library records; later, groups selected by
   pattern.
 - Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).

@@ -12,6 +12,7 @@ from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename
 
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
+PROJECT_CONFIG_NAMES = ("tunery.yaml", ".tunery.yaml")
 PROJECT_CONFIG_PARENT_LIMIT = 8
 
 
@@ -333,16 +334,65 @@ class LibraryRecord(BaseModel):
         )
 
 
-def find_project_config(start_dir: Path) -> Path | None:
-    directory = start_dir.resolve()
-    for depth in range(PROJECT_CONFIG_PARENT_LIMIT + 1):
-        candidate = directory / PROJECT_CONFIG_NAME
-        if candidate.is_file():
-            return candidate
-        if depth == PROJECT_CONFIG_PARENT_LIMIT or directory.parent == directory:
+def find_project_config(
+    start_dir: Path, limit: int | None = PROJECT_CONFIG_PARENT_LIMIT
+) -> Path | None:
+    """Walk up lexically from start_dir looking for project config.
+
+    Checks `tunery.yaml` and `.tunery.yaml` in each directory. The first
+    directory holding one wins; holding both is an error. `limit` caps how
+    many parents to climb (None walks to the filesystem root). Symlinks in
+    intermediate components are not resolved.
+    """
+    import os
+
+    directory = Path(os.path.normpath(str(start_dir)))
+    depth = 0
+    while True:
+        plain = directory / PROJECT_CONFIG_NAMES[0]
+        dotted = directory / PROJECT_CONFIG_NAMES[1]
+        has_plain = plain.is_file()
+        has_dotted = dotted.is_file()
+        if has_plain and has_dotted:
+            raise ValueError(
+                f"Both {PROJECT_CONFIG_NAMES[0]} and {PROJECT_CONFIG_NAMES[1]} "
+                f"present in {directory}"
+            )
+        if has_plain:
+            return plain
+        if has_dotted:
+            return dotted
+        if limit is not None and depth >= limit:
             break
-        directory = directory.parent
+        parent = directory.parent
+        if parent == directory:
+            break
+        directory = parent
+        depth += 1
     return None
+
+
+def _logical_cwd() -> Path:
+    """Working directory without resolving symlinks (see render.logical_cwd)."""
+    import os
+
+    pwd = os.environ.get("PWD")
+    if pwd:
+        logical = Path(pwd)
+        try:
+            if logical.samefile("."):
+                return logical
+        except OSError:
+            pass
+    return Path.cwd()
+
+
+def _lexical_absolute(path: Path) -> Path:
+    import os
+
+    if not path.is_absolute():
+        path = _logical_cwd() / path
+    return Path(os.path.normpath(str(path)))
 
 
 def load_library_records(
@@ -351,9 +401,16 @@ def load_library_records(
     return LibraryCollection([record.load(base_dir) for record in records])
 
 
-def load_project_libraries(start_dir: Path | None = None) -> LibraryCollection:
-    start = (start_dir or Path.cwd()).resolve()
-    config_path = find_project_config(start)
+def load_project_libraries(
+    start_dir: Path | None = None, limit: int | None = PROJECT_CONFIG_PARENT_LIMIT
+) -> LibraryCollection:
+    if start_dir is None:
+        start = _logical_cwd()
+    else:
+        start = Path(start_dir)
+        if not start.is_absolute():
+            start = _lexical_absolute(start)
+    config_path = find_project_config(start, limit)
     if config_path is None:
         print("Project configuration was not found, using defaults")
         return LibraryCollection([DirectoryLibrary(start)])

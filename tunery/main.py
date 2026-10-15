@@ -28,10 +28,17 @@ def render_command(
             help="Target key. C or omitted renders $stem.pdf; other keys render $stem.$key.pdf.",
         ),
     ] = [],
+    base: Annotated[
+        Path | None,
+        Parameter(
+            ["--base"],
+            help="Base directory for project config discovery (default: logical cwd or layout directory).",
+        ),
+    ] = None,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
-    render(layout, output_path, keys)
+    render(layout, output_path, keys, base)
 
 
 @app.command(name="lookup")
@@ -50,11 +57,18 @@ def lookup_command(
             help="Output path: if file, use as-is; if directory, save TITLE.pdf there; default: TITLE.pdf in cwd",
         ),
     ] = None,
+    base: Annotated[
+        Path | None,
+        Parameter(
+            ["--base"],
+            help="Base directory for project config discovery (default: logical cwd).",
+        ),
+    ] = None,
 ) -> None:
     """Look up titles in configured libraries and extract them to PDF."""
 
     for item in title:
-        render_module.lookup_and_extract(item, output)
+        render_module.lookup_and_extract(item, output, base)
 
 
 def main(args: Sequence[str] | None = None) -> None:

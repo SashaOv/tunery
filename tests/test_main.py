@@ -6,8 +6,8 @@ from tunery import main as cli
 def test_render_command_uses_default_output(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path, keys: list[str]):
-        calls.append((layout, output, keys))
+    def render(layout: Path, output: Path, keys: list[str], base: Path | None = None):
+        calls.append((layout, output, keys, base))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -18,6 +18,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             Path("setlists/favorites.yaml"),
             Path("setlists/favorites.pdf"),
             [],
+            None,
         )
     ]
 
@@ -25,8 +26,8 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
 def test_render_command_accepts_options(monkeypatch) -> None:
     calls = []
 
-    def render(layout: Path, output: Path, keys: list[str]):
-        calls.append((layout, output, keys))
+    def render(layout: Path, output: Path, keys: list[str], base: Path | None = None):
+        calls.append((layout, output, keys, base))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -40,6 +41,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "Bb",
             "--keys",
             "Eb,F",
+            "--base",
+            "proj",
         ]
     )
 
@@ -48,6 +51,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             Path("favorites.yaml"),
             Path("book.pdf"),
             ["Bb", "Eb,F"],
+            Path("proj"),
         )
     ]
 
@@ -55,23 +59,23 @@ def test_render_command_accepts_options(monkeypatch) -> None:
 def test_lookup_command_accepts_options(monkeypatch) -> None:
     calls = []
 
-    def lookup_and_extract(title: str, output: Path | None):
-        calls.append((title, output))
+    def lookup_and_extract(title: str, output: Path | None, base: Path | None = None):
+        calls.append((title, output, base))
 
     import tunery.render
 
     monkeypatch.setattr(tunery.render, "lookup_and_extract", lookup_and_extract)
 
-    cli.main(["lookup", "Blue Monk", "-o", "blue.pdf"])
+    cli.main(["lookup", "Blue Monk", "-o", "blue.pdf", "--base", "proj"])
 
-    assert calls == [("Blue Monk", Path("blue.pdf"))]
+    assert calls == [("Blue Monk", Path("blue.pdf"), Path("proj"))]
 
 
 def test_lookup_command_accepts_multiple_titles(monkeypatch) -> None:
     calls = []
 
-    def lookup_and_extract(title: str, output: Path | None):
-        calls.append((title, output))
+    def lookup_and_extract(title: str, output: Path | None, base: Path | None = None):
+        calls.append((title, output, base))
 
     import tunery.render
 
@@ -80,6 +84,6 @@ def test_lookup_command_accepts_multiple_titles(monkeypatch) -> None:
     cli.main(["lookup", "Blue Monk", "Autumn Leaves"])
 
     assert calls == [
-        ("Blue Monk", None),
-        ("Autumn Leaves", None),
+        ("Blue Monk", None, None),
+        ("Autumn Leaves", None, None),
     ]

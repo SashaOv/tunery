@@ -89,13 +89,31 @@ def resolve_path(path_str: str, base_dir: Path) -> Path:
     """
     Resolve a file path relative to base_dir if it's relative, otherwise return as-is.
 
-    Normalizes lexically without resolving symlinks, so `..` climbs above
-    symlinked parents instead of their targets.
+    Normalizes lexically without dereferencing intermediate symlinks, so `..`
+    climbs above symlinked parents instead of their targets.
     """
     path = Path(path_str)
     if path.is_absolute():
         return path
     return lexical_absolute(base_dir / path)
+
+
+def resolve_base_dir(
+    layout_path: Path | None, explicit_base: Path | None
+) -> tuple[Path, int | None]:
+    """Choose the config search base and parent-walk limit.
+
+    Explicit `--base` wins. Otherwise a relative layout path (or no layout)
+    searches from the logical working directory with at most eight parents;
+    an absolute layout path searches from its directory up to the root.
+    """
+    from tunery.library import PROJECT_CONFIG_PARENT_LIMIT
+
+    if explicit_base is not None:
+        return lexical_absolute(explicit_base), None
+    if layout_path is not None and layout_path.is_absolute():
+        return lexical_absolute(layout_path.parent), None
+    return logical_cwd(), PROJECT_CONFIG_PARENT_LIMIT
 
 
 @dataclass
@@ -281,6 +299,7 @@ def render(
     layout_path: Path,
     output: Path,
     keys: list[str] | None = None,
+    base: Path | None = None,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -311,13 +330,15 @@ def render(
 
     key_list = expand_keys(list(keys) if keys else [])
 
-    libraries = load_project_libraries(layout_path.parent)
+    base_dir, limit = resolve_base_dir(layout_path, base)
+    libraries = load_project_libraries(base_dir, limit)
 
+    layout_base = lexical_absolute(layout_path.parent)
     layout_entries: list[SectionEntry | FileEntry] = []
     for record in layout.root:
         if isinstance(record, ConfigEntry):
             for library_record in record.config:
-                libraries.add(library_record.load(layout_path.parent))
+                libraries.add(library_record.load(layout_base))
         else:
             layout_entries.append(record)
 
@@ -336,6 +357,7 @@ def render(
 def lookup_and_extract(
     title: str,
     output: Path | None,
+    base: Path | None = None,
 ) -> None:
     """
     Look up a title in configured libraries and extract it to PDF.
@@ -344,8 +366,10 @@ def lookup_and_extract(
         title: The title to search for.
         output: Output path - if file, use as-is; if directory, save <title>.pdf there;
                 if None, save <title>.pdf in current directory.
+        base: Explicit config search base (`--base`).
     """
-    libraries = load_project_libraries()
+    base_dir, limit = resolve_base_dir(None, base)
+    libraries = load_project_libraries(base_dir, limit)
     library_match = libraries.lookup_title(title)
     if library_match is None:
         print(f'No matches found for "{title}"')
