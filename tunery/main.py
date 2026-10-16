@@ -23,12 +23,12 @@ def render_command(
         ),
     ] = None,
     keys: Annotated[
-        list[str],
+        list[str] | None,
         Parameter(
             ["--keys", "-k"],
             help="Target key. C or omitted renders $stem.pdf; other keys render $stem.$key.pdf.",
         ),
-    ] = [],
+    ] = None,
     base: Annotated[
         Path | None,
         Parameter(
@@ -37,12 +37,12 @@ def render_command(
         ),
     ] = None,
     part: Annotated[
-        list[str],
+        list[str] | None,
         Parameter(
             ["--part"],
             help="Requested part(s) with substitution chains. Repeat for multiple outputs; comma combines in one file.",
         ),
-    ] = [],
+    ] = None,
     verbose: Annotated[
         int,
         Parameter(
@@ -62,7 +62,7 @@ def render_command(
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
     level = max(verbose, v)
-    render(layout, output_path, keys, base, part if part else None, level)
+    render(layout, output_path, keys or [], base, part or None, level)
 
 
 @app.command(name="lookup")

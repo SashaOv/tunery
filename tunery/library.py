@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
@@ -7,8 +8,13 @@ import yaml
 from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
-from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename
-from tunery.parts import fuzzy_title_prefix
+from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename, normalize_key_name
+from tunery.parts import (
+    canonical_part_name,
+    chain_for_part,
+    fuzzy_title_prefix,
+    match_candidate,
+)
 
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
@@ -70,8 +76,6 @@ class DirectoryLibrary:
         Follows symlinks without revisiting a real directory. `_archive`
         subtrees are skipped; `_.*` folders are transparent (name ignored).
         """
-        import os
-
         found: list[tuple[Path, str | None]] = []
         visited: set[tuple[int, int]] = set()
         # Stack of (lexical dir path, title-folder chain from root).
@@ -205,17 +209,10 @@ class DirectoryLibrary:
         self, title: str, requested_part: str, score_key: str | None = None
     ) -> tuple[Path, str, list[Path]] | None:
         """Select a file for title+part via substitution chains."""
-        from tunery.parts import (
-            canonical_part_name,
-            chain_for_part,
-        )
-
         requested = canonical_part_name(requested_part)
         chain = chain_for_part(requested)
         scored = self.all_candidates(title)
         if score_key is not None and scored:
-            from tunery.keys import normalize_key_name
-
             try:
                 wanted = normalize_key_name(score_key)
             except ValueError:
@@ -241,7 +238,7 @@ class DirectoryLibrary:
                 return (c.tag_count, str(item[0]))
 
             step_hits.sort(key=_sort_key)
-            best_path, best_cand = step_hits[0]
+            best_path, _ = step_hits[0]
             if len(step_hits) > 1:
                 names = ", ".join(sorted(str(p.name) for p, _ in step_hits))
                 print(f'tie for "{title}" ({step}): {names}')
@@ -255,8 +252,6 @@ class DirectoryLibrary:
         title against word prefixes of each name text and interpret what
         follows the matched prefix as tags.
         """
-        from tunery.parts import match_candidate
-
         out: list[tuple[Path, object]] = []
         for pdf_path, folder in self._items:
             cand = match_candidate(title, pdf_path.stem, folder)
@@ -446,8 +441,6 @@ class LibraryCollection:
         Returns (hits, missing) or None when no library has the title on any
         requested chain.
         """
-        from tunery.parts import canonical_part_name
-
         title_found = False
         for library in reversed(self._libraries):
             if isinstance(library, LibraryCollection):
@@ -483,9 +476,7 @@ class LibraryCollection:
                     [],
                 )
         if title_found:
-            from tunery.parts import canonical_part_name as _canon
-
-            return [], [_canon(s) for s in subparts]
+            return [], [canonical_part_name(s) for s in subparts]
         return None
 
     def all_candidates(self, title: str) -> list[tuple[str, Path, object | None]]:
@@ -583,8 +574,6 @@ def find_project_config(
     many parents to climb (None walks to the filesystem root). Symlinks in
     intermediate components are not resolved.
     """
-    import os
-
     directory = Path(os.path.normpath(str(start_dir)))
     depth = 0
     while True:
@@ -613,8 +602,6 @@ def find_project_config(
 
 def _logical_cwd() -> Path:
     """Working directory without resolving symlinks (see render.logical_cwd)."""
-    import os
-
     pwd = os.environ.get("PWD")
     if pwd:
         logical = Path(pwd)
@@ -627,8 +614,6 @@ def _logical_cwd() -> Path:
 
 
 def _lexical_absolute(path: Path) -> Path:
-    import os
-
     if not path.is_absolute():
         path = _logical_cwd() / path
     return Path(os.path.normpath(str(path)))

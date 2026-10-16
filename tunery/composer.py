@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Self
 
 import pikepdf
 
@@ -44,14 +45,14 @@ def get_page_label_to_index_map(pdf: pikepdf.Pdf) -> dict[int, int]:
                                 style_obj = label_dict["/S"]
                                 if isinstance(style_obj, pikepdf.Name):
                                     style = str(style_obj)
-                                elif isinstance(style_obj, pikepdf.Dictionary):
-                                    if "/St" in style_obj:
-                                        st_obj = style_obj["/St"]
-                                        start_num = (
-                                            int(st_obj)
-                                            if hasattr(st_obj, "__int__")
-                                            else 1
-                                        )
+                                elif (
+                                    isinstance(style_obj, pikepdf.Dictionary)
+                                    and "/St" in style_obj
+                                ):
+                                    st_obj = style_obj["/St"]
+                                    start_num = (
+                                        int(st_obj) if hasattr(st_obj, "__int__") else 1
+                                    )
 
                         if i + 2 < len(nums):
                             next_start_obj = nums[i + 2]
@@ -461,7 +462,7 @@ class Composer:
         self._pdf.close()
         self._closed = True
 
-    def __enter__(self) -> "Composer":
+    def __enter__(self) -> Self:
         self._ensure_open()
         return self
 

@@ -520,7 +520,7 @@ as blank PDFs under pytest's temporary directory, as the LIB4 tests do. No
 test depends on absolute paths or the author's drives; only the live check
 reads the real libraries.
 
-- **LIB5.1** Lint gate passes. `AGENTS.md` (with `CLAUDE.md` →
+- [x] **LIB5.1** Lint gate passes. `AGENTS.md` (with `CLAUDE.md` →
   `@AGENTS.md`) names the gate: `uv run ruff check tunery tests` plus
   `uv run pytest -q`. Ruff runs its defaults plus `PLC0415` (imports at
   module top). The author committed the setup and `ruff --fix`'s 15

@@ -6,8 +6,15 @@ import pikepdf
 import pytest
 import yaml
 
-from tunery.composer import copy_pages, get_page_label_to_index_map
-from tunery.render import render, resolve_path
+from tunery.composer import Composer, copy_pages, get_page_label_to_index_map
+from tunery.render import (
+    FileEntry,
+    NotFoundResult,
+    lookup_and_extract,
+    process_file_entry,
+    render,
+    resolve_path,
+)
 
 
 def create_pdf(path: Path, page_count: int) -> Path:
@@ -26,8 +33,6 @@ def write_layout(path: Path, records: Sequence[dict]) -> Path:
 
 
 def write_json(path: Path, data: object) -> Path:
-    import json
-
     path.write_text(json.dumps(data))
     return path
 
@@ -573,9 +578,6 @@ def test_bind_pdf_handles_nested_sections(tmp_path: Path) -> None:
 
 def test_process_file_entry_returns_not_found_result(tmp_path: Path) -> None:
     """Test that process_file_entry returns NotFoundResult for missing titles."""
-    from tunery.composer import Composer
-    from tunery.render import FileEntry, NotFoundResult, process_file_entry
-
     layout_dir = tmp_path / "setlist"
     layout_dir.mkdir()
 
@@ -601,8 +603,6 @@ def test_lookup_and_extract_single_match(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tunery.render import lookup_and_extract
-
     create_pdf(tmp_path / "books" / "RealBook.pdf", 5)
     write_json(
         tmp_path / "book.json",
@@ -633,8 +633,6 @@ def test_lookup_and_extract_no_matches(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tunery.render import lookup_and_extract
-
     create_pdf(tmp_path / "books" / "RealBook.pdf", 3)
     write_json(
         tmp_path / "book.json",
@@ -657,8 +655,6 @@ def test_lookup_and_extract_output_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tunery.render import lookup_and_extract
-
     create_pdf(tmp_path / "books" / "RealBook.pdf", 3)
     write_json(
         tmp_path / "book.json",

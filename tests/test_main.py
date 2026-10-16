@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import tunery.render
 from tunery import main as cli
 
 
@@ -87,8 +88,6 @@ def test_lookup_command_accepts_options(monkeypatch) -> None:
     def lookup_and_extract(title: str, output: Path | None, base: Path | None = None):
         calls.append((title, output, base))
 
-    import tunery.render
-
     monkeypatch.setattr(tunery.render, "lookup_and_extract", lookup_and_extract)
 
     cli.main(["lookup", "Blue Monk", "-o", "blue.pdf", "--base", "proj"])
@@ -101,8 +100,6 @@ def test_lookup_command_accepts_multiple_titles(monkeypatch) -> None:
 
     def lookup_and_extract(title: str, output: Path | None, base: Path | None = None):
         calls.append((title, output, base))
-
-    import tunery.render
 
     monkeypatch.setattr(tunery.render, "lookup_and_extract", lookup_and_extract)
 

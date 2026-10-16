@@ -283,13 +283,12 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
                     matched = True
                     break
             # Page split two-word: pg N / page N
-            if span == 2 and tokens[start] in ("pg", "p", "page"):
-                if re.fullmatch(r"\d{1,3}", tokens[i]):
-                    rules_fired.append(f"page split: {phrase}")
-                    for k in range(start, i + 1):
-                        consumed[k] = True
-                    matched = True
-                    break
+            if span == 2 and tokens[start] in ("pg", "p", "page") and re.fullmatch(r"\d{1,3}", tokens[i]):
+                rules_fired.append(f"page split: {phrase}")
+                for k in range(start, i + 1):
+                    consumed[k] = True
+                matched = True
+                break
             # Instrument with role: <instrument> <number> (1-2 word instrument)
             if re.fullmatch(r"\d{1,2}", tokens[i]):
                 inst_phrase = " ".join(tokens[start:i])
@@ -411,8 +410,7 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         instruments_found.sort(key=lambda x: x[0])
         pos, canon, role = instruments_found[-1]
         part = f"{canon} {role}" if role else canon
-        parts = [part] if "/" not in part else [part]
-        # Handle Horn 1/2 slash: if tokens contain horn 1 2 pattern, keep first role.
+        parts = [part]
         variations: list[str] = []
         for p, c, r in instruments_found[:-1]:
             variations.append(c.lower())

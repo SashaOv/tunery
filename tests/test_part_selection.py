@@ -49,7 +49,7 @@ def make_vault(root: Path):
 def test_piano_prefers_piano_and_falls_back(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    vault = make_vault(tmp_path)
+    make_vault(tmp_path)
     (tmp_path / "tunery.yaml").write_text("- library: Vault\n  match: exact\n")
     layout = write_layout(
         tmp_path / "gig.yaml",
@@ -68,7 +68,7 @@ def test_piano_prefers_piano_and_falls_back(
 
 
 def test_tie_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    vault = make_vault(tmp_path)
+    make_vault(tmp_path)
     (tmp_path / "tunery.yaml").write_text("- library: Vault\n  match: exact\n")
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Mo Better Blues"}])
 
@@ -80,7 +80,7 @@ def test_tie_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
 
 
 def test_library_priority_vault_beats_index(tmp_path: Path) -> None:
-    vault = make_vault(tmp_path)
+    make_vault(tmp_path)
     book = create_pdf(tmp_path / "books" / "RealBook.pdf", 5)
     assert book.exists()
     (tmp_path / "book.json").write_text(
@@ -115,7 +115,7 @@ def test_indexed_answers_part_request(tmp_path: Path) -> None:
 
 
 def test_guitar_chain_uses_piano_fallback(tmp_path: Path) -> None:
-    vault = make_vault(tmp_path)
+    make_vault(tmp_path)
     (tmp_path / "tunery.yaml").write_text("- library: Vault\n")
     # Heartaches has only Concert; Guitar -> Piano -> Rhythm -> Concert.
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Heartaches"}])
@@ -128,7 +128,7 @@ def test_guitar_chain_uses_piano_fallback(tmp_path: Path) -> None:
 
 
 def test_horn_role_selects_exact(tmp_path: Path) -> None:
-    vault = make_vault(tmp_path)
+    make_vault(tmp_path)
     (tmp_path / "tunery.yaml").write_text("- library: Vault\n")
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Norwegian Wood"}])
 

@@ -16,10 +16,12 @@ from tunery.keys import (
     output_path_for_key,
 )
 from tunery.library import (
+    PROJECT_CONFIG_PARENT_LIMIT,
     LibraryCollection,
     LibraryRecord,
     load_project_libraries,
 )
+from tunery.parts import canonical_part_name, normalize_text
 
 
 class FileEntry(BaseModel):
@@ -36,7 +38,7 @@ class FileEntry(BaseModel):
     notes: str | None = None
     key: str | None = None
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context: object, /) -> None:
         if not self.file and not self.title:
             raise ValueError("Either 'file' or 'title' must be provided")
 
@@ -86,8 +88,6 @@ def lexical_absolute(path: Path) -> Path:
 
 def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
     """Derive per-part setbook output path from the base output path."""
-    from tunery.parts import canonical_part_name
-
     if part is None:
         return output
     if isinstance(part, list):
@@ -120,8 +120,6 @@ def expand_part_specs(parts: list[str] | str | None) -> list[tuple[str, list[str
     output label RS/Rhythm/Rhythm Section respectively. Comma-separated values
     combine subparts with '+' output naming.
     """
-    from tunery.parts import canonical_part_name, normalize_text
-
     if parts is None:
         return [("Concert", ["Concert"])]
     if isinstance(parts, str):
@@ -170,8 +168,6 @@ def resolve_base_dir(
     searches from the logical working directory with at most eight parents;
     an absolute layout path searches from its directory up to the root.
     """
-    from tunery.library import PROJECT_CONFIG_PARENT_LIMIT
-
     if explicit_base is not None:
         return lexical_absolute(explicit_base), None
     if layout_path is not None and layout_path.is_absolute():
