@@ -15,6 +15,7 @@ from tunery.parts import (
     match_candidate,
     normalize_text,
     rank_chain,
+    stem_candidate,
 )
 
 MatchMode = Literal["exact", "fuzzy"]
@@ -376,6 +377,21 @@ class DirectoryLibrary:
                     out.append((pdf_path, cand))
                     break
         return out
+
+
+class ScoreFolder(DirectoryLibrary):
+    """A chart's `file:` folder: every PDF below it belongs to the chart's
+    title, so a name that doesn't match the title is read whole as tags."""
+
+    def all_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
+        return [
+            (
+                path,
+                match_candidate(title, path.stem, folder or self.view_path.name)
+                or stem_candidate(path.stem, folder or self.view_path.name),
+            )
+            for path, folder in self._items
+        ]
 
 
 def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:

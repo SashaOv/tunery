@@ -26,6 +26,7 @@ from tunery.library import (
     LibraryCollection,
     LibraryRecord,
     PartHit,
+    ScoreFolder,
     lexical_absolute,
     load_project_libraries,
     logical_cwd,
@@ -272,6 +273,19 @@ def process_file_entry(
         else None
     )
     if entry.file:
+        folder = resolve_path(entry.file, default_dir)
+        if folder.is_dir():
+            return select_and_add(
+                entry.title or folder.name,
+                entry,
+                LibraryCollection([ScoreFolder(folder)]),
+                subparts,
+                composer,
+                verbose,
+                part_prefix,
+            )
+        if folder.suffix.lower() != ".pdf" and not folder.exists():
+            raise ValueError(f"Score folder not found: {folder}")
         library_match = (
             libraries.lookup_file(entry.file, lookup_key) if libraries else None
         )
@@ -342,6 +356,20 @@ def process_file_entry(
         )
     if libraries is None:
         return NotFoundResult(title=title)
+    return select_and_add(title, entry, libraries, subparts, composer, verbose, part_prefix)
+
+
+def select_and_add(
+    title: str,
+    entry: FileEntry,
+    libraries: LibraryCollection,
+    subparts: list[str],
+    composer: Composer,
+    verbose: int,
+    part_prefix: str,
+) -> ProcessEntryResult:
+    """Choose the title's charts for the requested parts and add them: one
+    chart flat under the title, several nested under a title bookmark."""
     if entry.part:
         mapping = {
             canonical_part_name(asked): canonical_part_name(used)
@@ -390,8 +418,6 @@ def process_file_entry(
             page=entry_page,
             source_path=match.shown,
             source_page=page,
-            matched_title=matched_title,
-            score=score,
         )
     composer.start_section(title)
     first_page: int | None = None
@@ -413,8 +439,6 @@ def process_file_entry(
         page=first_page or 0,
         source_path=unique[0].match.shown,
         source_page=None,
-        matched_title=matched_title,
-        score=score,
     )
 
 

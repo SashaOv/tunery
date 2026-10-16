@@ -583,7 +583,7 @@ reads the real libraries.
   - `found` shows `Link/…`, not the resolved path.
 - [x] **LIB5.9** Output names ending in an alias of the requested part are not
   suffixed again. Test: `-o x.rs.pdf --part Rhythm` → `x.rs.pdf`.
-- **LIB5.10** Score folder per chart: `file:` naming a folder picks the
+- [x] **LIB5.10** Score folder per chart: `file:` naming a folder picks the
   title's parts among the PDFs in it. Tests: a folder whose names don't
   match the title gives the right part; a missing folder is a visible error
   naming the path.

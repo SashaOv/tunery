@@ -689,19 +689,26 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
             folder_interp = interpret_remainder(folder_remainder, allow_dual=not folder_parens)
             if folder_interp.free_tags and not folder_hard:
                 return None
-            stem_interp = interpret_remainder(clean_stem(stem))
-            score_key = stem_interp.score_key or folder_interp.score_key or _folder_score_key(folder)
-            return TitleCandidate(
-                remainder=clean_stem(stem),
-                parts=stem_interp.parts,
-                part=stem_interp.part,
-                score_key=score_key,
-                variations=stem_interp.variations,
-                free_tags=[],
-                rules_fired=stem_interp.rules_fired,
-                noise=copy_noise + stem_interp.noise,
-            )
+            return stem_candidate(stem, folder, folder_interp.score_key)
     return None
+
+
+def stem_candidate(
+    stem: str, folder: str | None = None, folder_key: str | None = None
+) -> TitleCandidate:
+    """A file whose title is known from its folder: the whole stem is read
+    as tags, and words no rule takes are ignored."""
+    interp = interpret_remainder(clean_stem(stem))
+    return TitleCandidate(
+        remainder=clean_stem(stem),
+        parts=interp.parts,
+        part=interp.part,
+        score_key=interp.score_key or folder_key or _folder_score_key(folder),
+        variations=interp.variations,
+        free_tags=[],
+        rules_fired=interp.rules_fired,
+        noise=(["copy of"] if _COPY_PREFIX.match(stem.strip()) else []) + interp.noise,
+    )
 
 
 def chain_for_part(requested: str) -> list[str]:
