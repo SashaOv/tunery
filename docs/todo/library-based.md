@@ -397,6 +397,54 @@ the repo).
     - The full book also takes `I Cant Help It.pdf` (concert, SheetMusic),
       which `26-09-15.yaml` lacks although its prompt asked for unsuffixed
       concert charts.
+- **LIB5 review** (2026-10-15, `cache/lib5-review.md`). Three defects
+  reproduced on tree `fd54ad6`:
+  - `-k` bypasses part selection: score folders ignore it, and title
+    entries still use the `<Title>.<K>.pdf` suffix lookup, so
+    `Tune/Tune - Bb.pdf` isn't found while `Flat.Bb.pdf` is;
+  - a collection file reached through a folder link resolves physically
+    (`library.py`, collection load), unlike project configs;
+  - chart `part:` mappings aren't validated (`{Tenor Sax: Fluet}` falls back
+    to Concert silently).
+
+  Two of the three are rules applied at one edge (part validation in
+  `--part` expansion, the lexical-path rule in the project-config loader)
+  that a new caller bypassed.
+- **Concert book falls through to real books** (2026-10-15): without
+  `--part`, Recado Bossa Nova comes from the Bob book, because SheetMusic has
+  only `- Rhythm` and `-  Bb` charts (in `_Petes/Crosswinds`) and the Concert
+  chain stops at Flute. A Rhythm chart is concert pitch.
+- **Concert = Lead Sheet = untagged = Rhythm chart** (author, 2026-10-15),
+  simulated by patching the chains on the live libraries (session
+  scratchpad `sim_concert.py`):
+  - Crosswinds concert book: Recado Bossa Nova, Mo' Better Blues, I Love
+    Lucy, Jeannine, Jolene, Funk in Deep Freeze and Comin' Home Baby take
+    their Rhythm chart (Funk no longer takes Flute; Recado and Comin' Home
+    Baby no longer fall back to real books).
+  - Concert then falls back to Melody, then Piano/Guitar, then Vocal
+    (author). I Can't Help It's concert
+    book takes `- Piano`, so no Crosswinds title comes from a real book.
+  - For rhythm players the Rhythm chart stays ahead of Concert: with it
+    after Concert, The Cape Verdean Blues' rs chart turned into the
+    SheetMusic concert chart.
+  - rs 22/23 and full 21/23 against the hand layouts. Full's Funk in Deep
+    Freeze loses Flute (its Concert is now the Rhythm Section chart), and
+    Cape Verdean adds SheetMusic's `.Bb` and `.pdf`.
+  - JBM rhythm-section picks are unchanged (22/22), and its 17 `missing`
+    lines go, since Bass and Drums now substitute to the Piano chart. JBM's
+    concert book: All of Me and Quizas take `-Piano`; Girl From Ipanema and
+    Steamroller Blues take `-Voice`.
+- **Poinciana concert book** (2026-10-15) takes
+  `SheetMusic/Poinciana/Poinciana.pdf`, which ties with
+  `_Petes/Poinciana/Poinciana - concert.pdf` (both Concert, 0 steps; neither
+  folder supplies another requested part) and wins on path order (warned).
+  The author wanted the `_Petes` chart and moved `SheetMusic/Poinciana` to
+  `_archive` (2026-10-15), so no rule change is needed. That also archives
+  `Poinciana.Bb.Emaj.pdf`, the hand full book's Bb chart: full drops to
+  21/23 with LIB5 code (20/23 simulated with LIB6.4).
+- **cyclopts 4.20** (2026-10-15): a list option can't also be given bare
+  (`--test` alone fails with "Parameter --test requires an argument"), but
+  `--test .`, `--test ""` and repeated `--test A --test B` all parse.
 - **Config discovery today** resolves the layout directory physically. From
   `JBM/GDrive/Shows/26-10-21` (`GDrive` → Google Drive), after the author
   removed the Drive-side `tunery.yaml`, it finds no config and renders
@@ -408,7 +456,7 @@ the repo).
 
 ### LIB4: Title-only combo layouts render the requested part from a nested folder library
 
-Status: executed, pending author verification (LIB4.6–LIB4.8, verbosity
+Status: implemented 2026-10-15 (commits LIB4.*; LIB4.6–LIB4.8, verbosity
 levels and `--part Rhythm` acceptance added by the author after approval on
 2026-10-14; LIB4.9 added 2026-10-15)
 
@@ -504,7 +552,8 @@ books.
 
 ### LIB5: Three Crosswinds books from one title list
 
-Status: executed, pending author verification
+Status: implemented 2026-10-15 (commits LIB5.*; follow-up `2f005ba` adds
+`build.py gate` and docs outside the plan)
 
 **Improvement:** one title-only layout renders the Crosswinds show's three
 books (rhythm section, Norm's tenor book and the full band book) from
@@ -700,6 +749,17 @@ macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
   generalization). Two new tests in `tests/test_sources.py` fail without it. The 26-09-15 test now
   expects Cape Verdean to keep its tenor chart.
 
+**Open clauses, observed 2026-10-15** after the author moved `Bb Parts` and
+`I Cant Help It` to `SheetMusic/_archive`:
+
+- `Bb Parts` moved out: norm 22/23, full 22/23. Only The Cape Verdean Blues
+  differs in full (it adds SheetMusic's `.Bb` and `.pdf`, warned). That is
+  fewer differences than predicted.
+- Funk in Deep Freeze → Flute: the author's layout now says
+  `parts: {norm: Flute}`, keyed by a named part, which LIB5 doesn't support
+  (planned in LIB6).
+- Musical review: passed (author, 2026-10-15).
+
 **Author action required at completion:**
 
 - Review the three rendered books musically.
@@ -707,12 +767,101 @@ macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
   `26-09-15.1.yaml`. Note that it then applies to the full book too, which
   drops the Tenor chart there (the mapping is keyed by part, not by book).
 
+### LIB6: Every lookup visible and checkable before rendering
+
+Status: planned, approved 2026-10-15
+
+**Improvement:** `tunery render gig.yaml --test .` shows, without writing a
+PDF, the chart each title would use and every substitution it took.
+- The Crosswinds concert book takes the band's Rhythm charts (or Piano,
+  for I Can't Help It), not real-book pages or the Flute part.
+- Norm's book takes Funk in Deep Freeze's Flute part through
+  `parts: {norm: Flute}`.
+- A typo in a part name stops the run with an error instead of a silent
+  fallback.
+- `-k` is gone, and collections reached through links stay in the
+  file-system view.
+
+**Patches:**
+
+Each patch updates the design sections it changes (Selection, Concepts,
+Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
+
+- **LIB6.1** Remove `-k`/`--keys`: `tunery/keys.py`, its tests, the
+  `<Title>.<K>.pdf` suffix lookups in `DirectoryLibrary`, per-key output
+  naming and `[Key]` prefixes. Retire `docs/todo/keys.md`. Tests: `-k` is
+  rejected by the CLI; `--part Bb` still renders a Bb book.
+- **LIB6.2** One part-name parser in `tunery/parts.py`, used by `--part`,
+  named-part definitions and chart mappings (keys and values). An unknown
+  name is an error that names the value and, for a chart, its title.
+  Tests: `{Tenor Sax: Fluet}`, `{Tenor Saxx: Flute}` and `full: Tenor Sx`
+  are errors; known aliases (`Tenor`, `rs`) pass.
+- **LIB6.3** Chart mappings keyed by a named part: `parts: {norm: Flute}`
+  replaces the title's parts when rendering `norm` and leaves other books
+  alone; part keys (`Tenor Sax: Horn 1`) apply in every book as today.
+  Test: Funk in Deep Freeze is Flute in `norm` and Tenor in `full`.
+- **LIB6.4** Concert = Lead Sheet = untagged = a Rhythm chart: one rank, in
+  that step order. Then Melody, then Piano/Guitar, then Vocal (author,
+  2026-10-15). Flute no longer substitutes for Concert. For Piano, Guitar,
+  Bass and Drums the Rhythm chart stays ahead of Concert. Requesting `Rhythm` still means Piano,
+  Guitar, Bass, Drums.
+  Tests (Facts names):
+  - Funk's concert chart is `- Rhythm Section`;
+  - Recado takes `- Rhythm` before a real book;
+  - I Can't Help It's concert chart is `- Piano`;
+  - Cape Verdean's Piano part is `- rhythm`, not the concert chart;
+  - Girl From Ipanema still takes `-Voice`.
+- **LIB6.5** Substitutions as default-level warnings, one line per title in
+  the per-title warning (`Heartaches: Piano, Guitar, Bass, Drums →
+  Concert`). `-v` then adds file names only. Tests: the line appears without
+  `-v`, once per title; no line when nothing was substituted.
+- **LIB6.6** One path resolver for configs, collections and layouts. A
+  collection reached through a folder link resolves lexically, like a
+  project config; a symlinked collection file still resolves against its
+  real location. Test: the review's `Link/collection.yaml` case shows
+  `Link/scores/Tune.pdf`.
+- **LIB6.7** `render --test TITLE` (repeatable): resolve the named titles,
+  print `-vv`-level results, write no PDF. `.` or `""` means every title
+  (author, 2026-10-15). A TITLE not in the layout is an error. Tests: no
+  file is written; `--test A --test B` prints only A and B; `--test .` and
+  `--test ""` print every title; works with several `--part` options.
+
+**Acceptance:**
+
+- *Scripted:* `uv run build.py gate` passes, including the LIB6 tests and
+  the LIB5 Crosswinds test updated for LIB6.3 and LIB6.4.
+- *Live (executor)*, from `/Users/sasha/personal/crosswinds`, no PDF
+  written:
+  - `tunery render GDrive/Shows/26-09-15/26-09-15.1.yaml --test .`: the
+    concert book's picks match Facts ("Concert = Lead Sheet = …"), Poinciana
+    takes `_Petes`' concert chart, and each substitution is warned.
+  - `--test . --part norm`: all 23 titles match `26-09-15.norm.yaml`.
+  - `--test . --part full`: 20/23 match `26-09-15.yaml`:
+    - The Cape Verdean Blues adds SheetMusic's `.Bb` and `.pdf` (warned);
+    - Funk in Deep Freeze has no Flute, because its Concert is the Rhythm
+      Section chart (LIB6.4);
+    - Poinciana has no `Poinciana.Bb.Emaj.pdf`, which the author archived
+      with `SheetMusic/Poinciana`; its Trumpet and Tenor take the `_Petes`
+      concert chart (warned as substitutions, LIB6.5).
+  - `--test . --part rs`: 22/23 match `26-09-15.rs.yaml`, plus Norwegian
+    Wood's Piano:Guitar.
+  - `--test Poinciana` prints only Poinciana.
+- *Live regression*: from `/Users/sasha/personal/wip/apps/JBM`,
+  `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm --test .`
+  gives the LIB4 picks (22 titles); `-k Bb` is rejected.
+- *Open if not observed:* name each clause not run, with what it takes.
+
+**Author action required at completion:**
+
+- Render the three Crosswinds books and the JBM book, and review them
+  musically.
+
 ## Backlog
 
-- Library `type` field with the big-band profile (rules marked big band
-  above).
 - Group folders (`Bb Parts`) add their part to everything below.
 - Sibling-prefix grouping for name texts (rules in Facts).
+- Library `type` field with the big-band profile (rules marked big band
+  above).
 - Durable named parts in the config (layout-level names: LIB5).
 - Full score: every part of every title in one file.
 - Variation selection by arranger (score key: LIB4.8; tags: LIB5).
@@ -727,3 +876,5 @@ macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
   or pattern (`file:` covers an exact folder).
 - Big-band best-effort: acronym and camelCase titles (`fmttm…`, `gd…`,
   `FlyingHomeRHYTHM`).
+- Per-patch interaction tests (new path vs. keys, collections, `file:`,
+  mappings, links): postponed to /onereview.
