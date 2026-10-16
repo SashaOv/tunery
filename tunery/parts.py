@@ -79,14 +79,9 @@ _KINDS: dict[str, str] = {
     "harmony": "Harmony",
 }
 
-_NOISE_WORDS = {
-    "original",
-    "rescan",
-    "v2",
-    "v3",
-    "org",
-    "irealpro",
-    "ireal",
+# Noise words add to a candidate's extra-word count; fillers do not.
+_NOISE_WORDS = {"original", "rescan", "org", "irealpro", "ireal"}
+_FILLER_WORDS = {
     "part",
     "parts",
     "in",
@@ -151,13 +146,16 @@ def fuzzy_title_prefix(title: str, name_text: str, cutoff: float = 90.0) -> str 
     return " ".join(words[:best]) if best is not None else None
 
 
+_COPY_PREFIX = re.compile(r"^(Copy of |Copy \(\d+\) of )")
+
+
 def clean_stem(stem: str) -> str:
     """Unwrap Finale prefix, drop Copy prefixes and trailing (1)."""
     s = stem.strip()
     m = re.match(r"^Finale 2004a\s*-\s*\[(.*)\]\s*$", s)
     if m:
         s = m.group(1).strip()
-    s = re.sub(r"^(Copy of |Copy \(\d+\) of )", "", s)
+    s = _COPY_PREFIX.sub("", s)
     s = re.sub(r"[\s_\-]*\(1\)\s*$", "", s)
     return s
 
@@ -184,6 +182,7 @@ class InterpretedTags:
     variations: list[str] = field(default_factory=list)
     free_tags: list[str] = field(default_factory=list)
     rules_fired: list[str] = field(default_factory=list)
+    noise: list[str] = field(default_factory=list)
 
 
 def _tokenize_tag_text(tag_text: str) -> list[str]:
@@ -205,6 +204,8 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
     instruments_found: list[tuple[int, str, str | None]] = []  # index, canon, role?
     groups_found: list[tuple[int, str]] = []
     kinds_found: list[tuple[int, str]] = []
+    versions: list[str] = []
+    noise_positions: list[int] = []
     dual: list[str] | None = None
 
     # Check dual-instrument single-segment: whole remainder joins two
@@ -366,19 +367,22 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
             consumed[i] = True
             i -= 1
             continue
-        # Noise: pure digits (track numbers, 0), v2/v3, named noise
-        if re.fullmatch(r"\d{1,3}", tok) or tok in _NOISE_WORDS or re.fullmatch(r"v\d+", tok):
-            # Attach role numbers to preceding instrument if adjacent.
-            if re.fullmatch(r"\d{1,2}", tok) and instruments_found:
-                # If previous token (i-1) is an instrument just found, make it a role.
-                pass
-            rules_fired.append(f"noise: {tok}")
+        if re.fullmatch(r"v\d+", tok):
+            versions.append(tok)
+            rules_fired.append(f"version: {tok}")
             consumed[i] = True
             i -= 1
             continue
-        # Moved article trailing the/a (from ", The" / ", A") treated as noise-like.
-        if tok in ("the", "a"):
-            rules_fired.append(f"moved article/noise: {tok}")
+        if tok in _FILLER_WORDS:
+            rules_fired.append(f"filler: {tok}")
+            consumed[i] = True
+            i -= 1
+            continue
+        # Noise: pure digits (track numbers, 0) and named noise words. Digits
+        # right after an instrument become its role below.
+        if re.fullmatch(r"\d{1,3}", tok) or tok in _NOISE_WORDS:
+            rules_fired.append(f"noise: {tok}")
+            noise_positions.append(i)
             consumed[i] = True
             i -= 1
             continue
@@ -400,6 +404,7 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
                     break
 
     free_tags = [tokens[k] for k in range(n) if not consumed[k]]
+    noise = [tokens[k] for k in sorted(noise_positions) if k - 1 not in roles]
 
     # Part determination.
     if dual:
@@ -411,10 +416,20 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         pos, canon, role = instruments_found[-1]
         part = f"{canon} {role}" if role else canon
         parts = [part]
-        variations: list[str] = []
-        for p, c, r in instruments_found[:-1]:
-            variations.append(c.lower())
-        variations_out = variations
+        variations_out = [c.lower() for _, c, _ in instruments_found[:-1]]
+        # A role in parentheses right after an instrument is the role that
+        # instrument plays: "tenor (horn 2)" is Tenor Sax as Horn 2.
+        paren_role = re.search(r"\(\s*horn\s*(\d{1,2})\s*\)", tag_text, re.IGNORECASE)
+        if (
+            paren_role
+            and canon == "Horn"
+            and role == paren_role.group(1)
+            and len(instruments_found) >= 2
+        ):
+            _, player, player_role = instruments_found[-2]
+            part = f"{player} {player_role}" if player_role else player
+            parts = [part, f"Horn {role}"]
+            variations_out = [c.lower() for _, c, _ in instruments_found[:-2]]
     elif groups_found:
         groups_found.sort(key=lambda x: x[0])
         part = groups_found[-1][1]
@@ -447,9 +462,10 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         part=part,
         score_key=score_key,
         score_mode=score_mode,
-        variations=variations_out if instruments_found else [],
+        variations=(variations_out if instruments_found else []) + versions,
         free_tags=free_tags,
         rules_fired=rules_fired,
+        noise=noise,
     )
 
 
@@ -482,13 +498,14 @@ def match_prefix(layout_title: str, name_text: str) -> str | None:
     selection via interpret_remainder).
     """
     hit = match_prefix_boundary(layout_title, name_text)
-    return hit[0] if hit else None
+    return normalize_text(hit[0]) if hit else None
 
 
 def match_prefix_boundary(layout_title: str, name_text: str) -> tuple[str, bool, bool] | None:
     """Return (remainder, is_hard_boundary, remainder_has_parens) or None.
 
-    Hard separators: ' - ', '-', '.', ',', '(', ')', '[', ']', ':'. Soft is a
+    The remainder keeps its punctuation (lowercased), so interpretation can
+    see parentheses. Hard separators: ' - ', '-', '.', ',', '(', ')', '[', ']', ':'. Soft is a
     space. No separator (mid-word) is not a boundary. Exact match returns
     ("", True, False).
     """
@@ -525,21 +542,7 @@ def match_prefix_boundary(layout_title: str, name_text: str) -> tuple[str, bool,
     # ' - ' contains '-', hard. Space alone is soft.
     is_hard = any(c in hard_chars for c in rest_original[:3])
     has_parens = "(" in rest_original or "[" in rest_original
-    # Normalize remainder via normalize_text for downstream parsing.
-    norm = normalize_text(name_clean)
-    # Recompute remainder via norm split (as before) for stable output.
-    sq_count = 0
-    idx = 0
-    for p, ch in enumerate(norm):
-        if ch != " ":
-            sq_count += 1
-            if sq_count == target:
-                idx = p + 1
-                break
-    else:
-        return None
-    rest = norm[idx:].strip()
-    return (rest, is_hard, has_parens)
+    return (rest_original.strip(), is_hard, has_parens)
 
 
 @dataclass
@@ -633,10 +636,17 @@ class TitleCandidate:
     variations: list[str] = field(default_factory=list)
     free_tags: list[str] = field(default_factory=list)
     rules_fired: list[str] = field(default_factory=list)
+    noise: list[str] = field(default_factory=list)
 
     @property
     def tag_count(self) -> int:
-        return (1 if self.score_key else 0) + len(self.variations) + len(self.free_tags)
+        """Extra words: score key, variations, free tags and noise words."""
+        return (
+            (1 if self.score_key else 0)
+            + len(self.variations)
+            + len(self.free_tags)
+            + len(self.noise)
+        )
 
 
 def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCandidate | None:
@@ -645,6 +655,7 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
     Hard-boundary remainders accept free tags as variations; soft-boundary
     remainders require all-tag content (Morning Piano yes, Morning Dance no).
     """
+    copy_noise = ["copy of"] if _COPY_PREFIX.match(stem.strip()) else []
     stem_hit = match_prefix_boundary(title, stem)
     if stem_hit is not None:
         stem_remainder, is_hard, has_parens = stem_hit
@@ -659,6 +670,7 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
                 variations=interp.variations,
                 free_tags=interp.free_tags,
                 rules_fired=interp.rules_fired,
+                noise=copy_noise + interp.noise,
             )
         # Soft-boundary remainder with free tags: not this title via the stem
         # (e.g. "Mack_The_Knife__Bobby_Darin Score-Piano" slug words). Fall
@@ -680,6 +692,7 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
                 variations=stem_interp.variations,
                 free_tags=[],
                 rules_fired=stem_interp.rules_fired,
+                noise=copy_noise + stem_interp.noise,
             )
     return None
 

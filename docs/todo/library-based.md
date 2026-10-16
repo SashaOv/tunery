@@ -532,7 +532,7 @@ reads the real libraries.
 - [x] **LIB5.2** Name child bookmarks by the file's part label (`Rhythm`,
   `Piano/Guitar`, `Concert`), not the requested part. Test: Mo' Better
   Blues, Norwegian Wood and Poinciana bookmark trees.
-- **LIB5.3** Name fixes:
+- [x] **LIB5.3** Name fixes:
   - `tenor (horn 2)` is Tenor Sax as Horn 2;
   - `v2`, `v3`, … are version tags (variations);
   - `Copy of` and other noise words add to the extra-word count.

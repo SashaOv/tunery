@@ -3,6 +3,7 @@ from tunery.parts import (
     clean_stem,
     fuzzy_title_prefix,
     interpret_remainder,
+    match_candidate,
     match_prefix,
     normalize_text,
     parse_filename,
@@ -137,3 +138,35 @@ def test_fuzzy_title_prefix_rejects_inner_substring() -> None:
 def test_unspecified_sax_is_not_concert() -> None:
     assert interpret_remainder("Tenro Sax part in Concert Gm)").part == "Saxophone"
     assert interpret_remainder("(Alto Sax part in Concert Gm)").part == "Alto Sax"
+
+
+def test_parenthesized_role_is_played_by_preceding_instrument() -> None:
+    r = interpret_remainder("tenor (horn 2)")
+    assert r.part == "Tenor Sax"
+    assert r.parts == ["Tenor Sax", "Horn 2"]
+    assert r.variations == []
+
+
+def test_version_is_a_variation() -> None:
+    r = interpret_remainder("Tenor Sax.v2")
+    assert r.part == "Tenor Sax"
+    assert r.variations == ["v2"]
+
+
+def test_noise_words_add_extra_words_but_fillers_do_not() -> None:
+    plain = match_candidate("Creepin", "Creepin")
+    noisy = match_candidate("Creepin", "Creepin.iRealPro")
+    assert noisy.tag_count == plain.tag_count + 1
+    assert match_candidate("Tune", "Tune - Bb part").tag_count == 0
+
+
+def test_copy_of_counts_as_noise() -> None:
+    original = match_candidate("Shaker Song", "Shaker Song - Tenor")
+    copy = match_candidate("Shaker Song", "Copy of Shaker Song - Tenor")
+    assert copy.part == original.part == "Tenor Sax"
+    assert copy.tag_count == original.tag_count + 1
+
+
+def test_parenthesized_role_survives_title_match() -> None:
+    c = match_candidate("The Cape Verdean Blues", "The Cape Verdean Blues - tenor (horn 2)")
+    assert (c.part, c.parts) == ("Tenor Sax", ["Tenor Sax", "Horn 2"])
