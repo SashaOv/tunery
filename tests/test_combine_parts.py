@@ -93,3 +93,11 @@ def test_missing_part_reported(tmp_path: Path, capsys) -> None:
 def test_output_suffix_not_doubled(tmp_path: Path) -> None:
     assert output_path_for_label(tmp_path / "book.RS.pdf", "RS") == tmp_path / "book.RS.pdf"
     assert output_path_for_label(tmp_path / "spot.Piano.pdf", "Piano") == tmp_path / "spot.Piano.pdf"
+
+
+def test_output_ending_in_part_alias_is_kept(tmp_path: Path) -> None:
+    assert output_path_for_label(tmp_path / "x.rs.pdf", "Rhythm") == tmp_path / "x.rs.pdf"
+    assert output_path_for_label(tmp_path / "x.RS.pdf", "Rhythm Section") == tmp_path / "x.RS.pdf"
+    assert output_path_for_label(tmp_path / "x.tenor.pdf", "Tenor Sax") == tmp_path / "x.tenor.pdf"
+    assert output_path_for_label(tmp_path / "x.pdf", "Rhythm") == tmp_path / "x.Rhythm.pdf"
+    assert output_path_for_label(tmp_path / "x.bass.pdf", "Piano") == tmp_path / "x.bass.Piano.pdf"

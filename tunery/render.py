@@ -95,31 +95,21 @@ PART_BOOKMARK_PREFIX = "_ "
 RHYTHM_SECTION_NAMES = {"rs": "RS", "rhythm": "Rhythm", "rhythm section": "Rhythm Section"}
 
 
-def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
-    """Derive per-part setbook output path from the base output path."""
-    if part is None:
-        return output
-    if isinstance(part, list):
-        if len(part) == 1:
-            return output_path_for_part(output, part[0])
-        canons = [canonical_part_name(p) for p in part]
-        return output.with_name(f"{output.stem}.{'+'.join(canons)}{output.suffix}")
-    canon = canonical_part_name(part)
-    if canon in ("Concert", "C"):
-        return output
-    if output.stem == canon or output.stem.endswith(f".{canon}"):
-        return output
-    return output.with_name(f"{output.stem}.{canon}{output.suffix}")
-
-
 def output_path_for_label(output: Path, label: str | None) -> Path:
     """Derive output path from a part-spec label (RS stays .RS.pdf)."""
     if label is None or label in ("Concert", "C"):
         return output
-    # Don't double-suffix when -o already ends with the part label.
-    if output.stem == label or output.stem.endswith(f".{label}"):
+    # Don't double-suffix when -o already ends with the part or an alias.
+    if _same_part(output.stem.split(".")[-1], label):
         return output
     return output.with_name(f"{output.stem}.{label}{output.suffix}")
+
+
+def _same_part(a: str, b: str) -> bool:
+    """Whether two part names (aliases included) name the same part."""
+    if normalize_text(a) in RHYTHM_SECTION_NAMES and normalize_text(b) in RHYTHM_SECTION_NAMES:
+        return True
+    return canonical_part_name(a) == canonical_part_name(b)
 
 
 def _expand_part(raw: str, named: dict[str, str]) -> tuple[str, list[str]]:
