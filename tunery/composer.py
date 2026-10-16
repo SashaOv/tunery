@@ -414,8 +414,13 @@ class Composer:
         start: int | None = None,
         pages: int | None = None,
         notes: str | None = None,
+        bookmark: bool = True,
     ) -> int:
-        """Add a tune to the file"""
+        """Add a tune to the file.
+
+        Continuation ranges pass `bookmark=False`: their pages are appended
+        without their own bookmark.
+        """
         self._ensure_open()
 
         page = len(self._pdf.pages)
@@ -424,7 +429,8 @@ class Composer:
         else:
             copy_pages(self._pdf, str(source), start, pages)
 
-        self._append_outline_node(_OutlineNode(title=title, page=page))
+        if bookmark:
+            self._append_outline_node(_OutlineNode(title=title, page=page))
         self._save_if_needed()
         return page
 

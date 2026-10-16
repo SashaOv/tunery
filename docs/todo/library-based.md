@@ -1019,7 +1019,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   - the `file:` case;
   - no file and several files warn;
   - an index part and a part file named for the same title coexist.
-- **LIB7.3** A part given as a list of ranges renders its ranges in list
+- [x] **LIB7.3** A part given as a list of ranges renders its ranges in list
   order under one bookmark for the title. The composer adds continuation
   ranges without their own bookmark. It is a one-off (Come Dance With Me's
   pages are out of order), so the simplest rendering will do (author,

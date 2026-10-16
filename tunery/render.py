@@ -18,6 +18,7 @@ from pydantic import (
 from tunery.composer import Composer
 from tunery.library import (
     LibraryCollection,
+    LibraryMatch,
     LibraryRecord,
     PartHit,
     ScoreFolder,
@@ -294,6 +295,33 @@ def process_file_entry(
     )
 
 
+def _add_hit(
+    composer: Composer, bookmark_title: str, match: LibraryMatch, entry: FileEntry
+) -> int:
+    """Add one hit's ranges in list order under a single bookmark: the first
+    range takes `bookmark_title`, continuation ranges take none."""
+    ranges = (
+        match.ranges
+        if entry.page is None and entry.length is None and match.ranges
+        else [(entry.page if entry.page is not None else match.page,
+               entry.length if entry.length is not None else match.length)]
+    )
+    first_page: int | None = None
+    for i, (start, pages) in enumerate(ranges):
+        entry_page = composer.add(
+            title=bookmark_title,
+            source=match.source,
+            start=start,
+            pages=pages,
+            notes=entry.notes,
+            bookmark=(i == 0),
+        )
+        if first_page is None:
+            first_page = entry_page
+    assert first_page is not None
+    return first_page
+
+
 def select_and_add(
     title: str,
     entry: FileEntry,
@@ -361,28 +389,18 @@ def select_and_add(
     unique = list(first_hits.values())
     if len(unique) == 1:
         match = unique[0].match
-        page = entry.page if entry.page is not None else match.page
-        length = entry.length if entry.length is not None else match.length
-        entry_page = composer.add(
-            title=title, source=match.source, start=page, pages=length, notes=entry.notes
-        )
+        entry_page = _add_hit(composer, title, match, entry)
         return SuccessResult(
             title=title,
             page=entry_page,
             source_path=match.shown,
-            source_page=page,
+            source_page=entry.page if entry.page is not None else match.page,
         )
     composer.start_section(title)
     first_page: int | None = None
     for hit in unique:
-        page = entry.page if entry.page is not None else hit.match.page
-        length = entry.length if entry.length is not None else hit.match.length
-        entry_page = composer.add(
-            title=f"{part_prefix}{hit.label}",
-            source=hit.match.source,
-            start=page,
-            pages=length,
-            notes=entry.notes,
+        entry_page = _add_hit(
+            composer, f"{part_prefix}{hit.label}", hit.match, entry
         )
         if first_page is None:
             first_page = entry_page

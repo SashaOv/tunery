@@ -124,3 +124,31 @@ def test_index_part_and_part_file_coexist(tmp_path: Path) -> None:
             root = list(outline.root)
             assert root[0].title == "Gato Gordo"
             assert sorted(c.title for c in root[0].children) == ["Bass", "Piano"]
+
+
+def test_ranges_render_in_order_under_one_bookmark(tmp_path: Path) -> None:
+    jumbo = tmp_path / "Band" / "Come Dance With Me.pdf"
+    jumbo.parent.mkdir(parents=True, exist_ok=True)
+    pdf = pikepdf.Pdf.new()
+    for n in range(1, 31):
+        pdf.add_blank_page(page_size=(200, 200) if n == 26 else (100, 100))
+    pdf.save(jumbo)
+    pdf.close()
+    (tmp_path / "tunery.yaml").write_text(
+        "- library: Band\n"
+        "  type: big band\n"
+        "  index:\n"
+        "    - title: Come Dance With Me\n"
+        "      parts: {bass: [[26, 1], [25, 1]]}\n"
+    )
+    layout = write_layout(tmp_path / "show.yaml", [{"title": "Come Dance With Me"}])
+
+    render(layout, tmp_path / "show.pdf", part=["Bass"])
+
+    with pikepdf.Pdf.open(tmp_path / "show.Bass.pdf") as out:
+        assert len(out.pages) == 2
+        assert [int(p.mediabox[2]) for p in out.pages] == [200, 100]
+        with out.open_outline() as outline:
+            root = list(outline.root)
+            assert [item.title for item in root] == ["Come Dance With Me"]
+            assert list(root[0].children) == []
