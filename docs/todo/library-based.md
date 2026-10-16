@@ -24,7 +24,8 @@ structure on top. `file:` layouts keep working unchanged.
   selected (`key:`, `tag:`); ambiguity is reported.
 - **Library type:** `combo` (default) or `big band`. Sets rule priorities
   (below) and the default part of untagged items: Concert lead sheet for
-  combo, full score for big band.
+  combo, a jumbo file (every part in sequence; LIB7) for big band. A conductor
+  score (all instruments on one page) is a part of its own in both.
 - **File-system view** (author, approved 2026-10-15):
   - The **base** directory is the root of tunery's view of the file system.
     It is `--base` if given, else the logical working directory (`$PWD`).
@@ -451,6 +452,38 @@ the repo).
 - **cyclopts 4.20** (2026-10-15): a list option can't also be given bare
   (`--test` alone fails with "Parameter --test requires an argument"), but
   `--test .`, `--test ""` and repeated `--test A --test B` all parse.
+- **SOJ big-band books** (surveyed 2026-10-16), Drive folder `Ongoing/SOJ`:
+  - Libraries: `MasterList` (161 entries) and `Repertoire`, a renamed
+    25-title subset that `SOJ/tunery.yaml` points to. Most titles are one
+    full-score PDF (`Title-Arranger.pdf`); some are part folders
+    (`Hay Burner-Nestico/Bass.pdf`, `Gato Gordo-Burger/Gato - Bass.pdf`).
+  - Hand layouts per instrument: 26-07-09 bass and piano, 26-08-07 bass,
+    26-09-12 bass (the latest made from `MasterList` plus `scores.json`).
+    About two thirds of their charts are page ranges inside a full score,
+    which no name reveals.
+  - `apps/SOJ/data/scores.json` (32 titles; parts `bass`, `piano`): values
+    are `page` (4), `[page, length]` (31), `{file}` (11) and
+    `{list: [26, 25]}` (1, pages in that order). `_path` is relative to
+    `MasterList`: 30/32 resolve. "Ain't That a Kick in the Head" differs
+    only by apostrophe (`’` in `MasterList`); `Love is Here to Stay (Bb)-
+    Wolpe.pdf` has no file.
+  - Matching titles fuzzily (ratio ≥ 88), the index reproduces 26-07-09 bass
+    15/15, 26-08-07 bass 21/21, 26-07-09 piano 14/15 (Walking My Baby Back
+    Home: layout pages 31–34, index `[33, 4]`), and 26-09-12 bass 15/25 (10
+    titles have no index entry).
+  - The existing rendered books' page counts equal what their layouts imply:
+    26-07-09 bass 28, piano 44; 26-08-07 bass 44; 26-09-12 bass 51.
+- **Index titles in `MasterList`** (2026-10-16, through
+  `apps/SOJ/cache/GDrive`, current code):
+  - all 32 `scores.json` titles find candidates;
+  - all 11 `{file}` parts are already found by name with the right part
+    (Gato, Hooked on a Feeling `Keys` → Piano, I Feel Good's Finale names,
+    Mack's `bss`);
+  - only "I've Got You Under My Skin" finds several jumbo files (`- Ebm.pdf`
+    and its `- others` folder);
+  - a split part appears once in the hand layouts: 26-06-07's Come Dance
+    With Me is a section with `Page 1` (p. 26) and `Page 2` (p. 25);
+  - 26 of 32 entries keep page parts after dropping `{file}` parts.
 - **Config discovery today** resolves the layout directory physically. From
   `JBM/GDrive/Shows/26-10-21` (`GDrive` → Google Drive), after the author
   removed the Drive-side `tunery.yaml`, it finds no config and renders
@@ -892,19 +925,151 @@ Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs: scratchpad
 - Render the three Crosswinds books and the JBM book, and review them
   musically.
 
+### LIB7: SOJ per-instrument books from a title-only setlist
+
+Status: planned, approved 2026-10-16
+
+**Improvement:** a big-band setlist of titles alone renders the bass or piano
+book. Page ranges come from an index inside the library definition
+(`MasterList/tunery.yaml`), part files from their names. Today these books
+are hand-written per instrument and gig. A jumbo or combined-set PDF never stands
+in for a missing part; the part is reported missing instead.
+
+**Patches:**
+
+Each patch updates the design sections it changes and adds tests (blank
+PDFs under `tmp_path`, names copied from the libraries).
+
+- **LIB7.1** Library `type: combo | big band` on library records (a
+  collection reference passes it on like `match`).
+  - A big-band library holds the score formats of `apps/SOJ/docs/SPEC.md`
+    ("Score Format"; the ZIPs are unpacked into folders):
+    - **parts**, one part per file (`Hay Burner-Nestico/Bass.pdf`): found
+      by name, as today;
+    - **jumbo**, every part in sequence in one file, named for no part
+      (`Bandstand Boogie-Lowden.pdf`);
+    - **combined set**, a few related parts in sequence, named for their
+      group (`Rhythm Parts.pdf`).
+
+    A jumbo or combined-set file is never reached by a chain, so it never
+    stands in for a part; its parts come from the index (LIB7.2).
+  - **pages** (one page of a part per file, `Bone 2 Pg 2`) and
+    **multi-staff** (`Tenors n Bari`) stay in the backlog: none of the four
+    SOJ books uses them.
+  - A conductor score (`conductor`, `score`, `condensed score`) is a part of
+    its own (`Conductor`), all instruments on one page: recognized and
+    listed, never substituted for another part (author, 2026-10-16).
+  - Arrangers need no rule: `-Lowden` is a free tag, which `tag: Lowden`
+    already selects (author, 2026-10-16).
+
+  Tests:
+  - `Bandstand Boogie-Lowden.pdf` is jumbo and `Rhythm Parts.pdf` a combined
+    set in a big-band library;
+  - `--part Bass` on it alone reports `missing Bass`;
+  - `Hay Burner-Nestico/Conductor.pdf` is Conductor and never answers
+    `--part Piano`;
+  - in a combo library the same file stays Concert.
+- **LIB7.2** Part index in the library definition (author, 2026-10-16):
+  ```yaml
+  # GDrive/MasterList/tunery.yaml, included by GDrive/tunery.yaml
+  - library: ./
+    type: big band
+    match: fuzzy
+    index:
+      - title: Bandstand Boogie
+        parts: {bass: 15, piano: [17, 3]}
+      - title: I've Got You Under My Skin
+        file: I've Got You Under My Skin - Ebm.pdf
+        parts: {bass: [27, 2]}
+  ```
+  - An entry names the title. Its file is the title's jumbo file in the
+    library, found like any title. `file:` (relative to the library) names
+    the file explicitly, however its name reads. It is needed when the title
+    finds several jumbo files ("I've Got You Under My Skin"), for a combined
+    set, or for a file whose name reads as something else
+    (`Love Is Here To Stay.Low Key.Bb.pdf`, where `Low Key` is a tag for a
+    low-voiced singer; author, 2026-10-16).
+  - Part values are `page`, `[page, length]`, or a list of ranges
+    `[[26, 1], [25, 1]]` for pages out of order (author, 2026-10-16).
+  - Part names go through the part parser (LIB6.2), so an unknown name is an
+    error. Part files found by name need no entry (Gato Gordo, Hay Burner, …).
+  - Index parts are candidates of the title at the part's own step.
+  - An entry whose title finds no jumbo file, or several without `file:`,
+    gets a warning naming the title, and its parts count as missing.
+
+  Tests:
+  - the value shapes;
+  - an entry without `file:`;
+  - the `file:` case;
+  - no file and several files warn;
+  - an index part and a part file named for the same title coexist.
+- **LIB7.3** A part given as a list of ranges renders its ranges in list
+  order under one bookmark for the title. The composer adds continuation
+  ranges without their own bookmark. It is a one-off (Come Dance With Me's
+  pages are out of order), so the simplest rendering will do (author,
+  2026-10-16). Test: Come Dance With Me's bass is pages 26 then 25, with one
+  bookmark.
+- **LIB7.4** SOJ test case.
+  - `tests/data/` gets the `MasterList` names for the four books' titles,
+    the converted index, and the hand books' charts (file and pages per
+    title).
+  - The test renders each book from its titles. It asserts:
+    - 26-07-09 bass 15/15 and 26-08-07 bass 21/21 as the hand layouts;
+    - 26-07-09 piano 15/15 as the index (Walking My Baby Back Home is pages
+      33–35, unlike the hand layout's 31–34);
+    - 26-09-12 bass 15/25, with `missing Bass` for the 10 titles without an
+      entry.
+
+**One-off data conversion (declared, author-applied):** the executor
+converts `apps/SOJ/data/scores.json` into the index above. That gives 26
+entries; the 6 whose parts are all found by name are dropped, and `_path` is
+dropped. `file:` is kept for "I've Got You Under My Skin" and set to
+`Love Is Here To Stay.Low Key.Bb.pdf` for Love is Here to Stay. Walking My
+Baby Back Home's piano becomes `[33, 3]` (author, 2026-10-16: pages 33–35). The
+result goes to the scratchpad as `MasterList.tunery.yaml`, for the author to
+review and place in Drive. The executor writes nothing to Drive.
+
+**Acceptance:**
+
+- *Scripted:* `uv run build.py gate` passes, including the LIB7 tests.
+- *Live (executor)*, from `/Users/sasha/personal/wip/apps/SOJ/cache`. Use a
+  scratchpad copy of the converted index whose `library:` is the absolute
+  `GDrive/MasterList` path, plus, per book, a scratchpad layout of the hand
+  layout's titles and sections whose `config:` includes that copy. Render
+  with `--part Bass` (or `Piano`) and observe:
+  - 26-07-09 bass and 26-08-07 bass: every chart's file and pages equal the
+    hand layout's, and the books have 28 and 44 pages, like the existing
+    `26-07-09.bass.pdf` and `26-08-07.bass.pdf`;
+  - 26-07-09 piano: 43 pages (the existing book has 44); only Walking My
+    Baby Back Home differs from the hand layout (pages 33–35, not 31–34);
+  - 26-09-12 bass: 15 titles as the hand layout, and `missing Bass` for the
+    10 without an index entry;
+  - `--test .` on the 26-08-07 layout lists each title's index part as a
+    candidate.
+- *Live regression:* the LIB6 Crosswinds and JBM `--test .` runs give the
+  same picks (combo libraries).
+- *Open if not observed:* name each clause not run, with what it takes.
+
+**Author action required at completion:**
+
+- Review the converted `MasterList.tunery.yaml` and place it as
+  `GDrive/MasterList/tunery.yaml`. Point `GDrive/tunery.yaml` at it
+  (`- library: ./MasterList/tunery.yaml`) instead of `Repertoire`.
+- Optional: add index entries for the 10 titles of 26-09-12 that lack one.
+- Review the rendered books musically.
+
 ## Backlog
 
 - Group folders (`Bb Parts`) add their part to everything below.
 - Sibling-prefix grouping for name texts (rules in Facts).
-- Library `type` field with the big-band profile (rules marked big band
-  above).
+- Rest of the big-band profile (rules marked big band above): trailing key,
+  big-band instruments and codes, arrangement version (`type`, Score
+  default and arranger: LIB7).
 - Durable named parts in the config (layout-level names: LIB5).
-- Full score: every part of every title in one file.
 - Variation selection by arranger (score key: LIB4.8; tags: LIB5).
 - Forced per-item metadata in library records; later, groups selected by
   pattern.
 - Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).
-- Parts inside multi-part score PDFs (`scores.json`, schema may change).
 - Library exclusion list (`.gitignore` analog) beyond `_archive`.
 - Inspection command listing discovered titles, parts and free tags.
 - `lookup --part`.
@@ -914,3 +1079,4 @@ Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs: scratchpad
   `FlyingHomeRHYTHM`).
 - Per-patch interaction tests (new path vs. keys, collections, `file:`,
   mappings, links): postponed to /onereview.
+- Full score: every part of every title in one file.
