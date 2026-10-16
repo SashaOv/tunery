@@ -733,3 +733,21 @@ def chain_for_part(requested: str) -> list[str]:
         if fallback not in steps:
             steps.append(fallback)
     return steps
+
+
+KEY_GROUPS = {"Bb", "Eb", "Bass Clef", "F"}
+
+
+def rank_chain(requested: str) -> list[list[str]]:
+    """Substitution chain grouped into ranks, best first.
+
+    A key group (Bb, Eb, Bass Clef, F) shares its instrument's rank: a Bb
+    chart is as good as a Tenor Sax chart. Every other step is its own rank.
+    """
+    ranks: list[list[str]] = []
+    for step in chain_for_part(requested):
+        if ranks and step in KEY_GROUPS:
+            ranks[-1].append(step)
+        else:
+            ranks.append([step])
+    return ranks

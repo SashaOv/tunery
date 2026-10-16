@@ -543,7 +543,7 @@ reads the real libraries.
 - [x] **LIB5.4** Rhythm section inside comma lists:
   `Concert,Trumpet,Tenor Sax,Rhythm` expands `Rhythm` to its four members.
   Test: Mo' Better Blues gets Trumpet, Tenor Sax, Rhythm, Bass, Drums.
-- **LIB5.5** Ranks, sources, choice per part and warnings (Selection). This
+- [x] **LIB5.5** Ranks, sources, choice per part and warnings (Selection). This
   replaces LIB4's per-step ties.
   Tests:
   - Poinciana: Concert + Bass from `_Petes` for the rhythm section, plus

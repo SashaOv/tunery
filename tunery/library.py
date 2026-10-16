@@ -10,10 +10,10 @@ from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename, normalize_key_name
 from tunery.parts import (
-    canonical_part_name,
-    chain_for_part,
+    TitleCandidate,
     fuzzy_title_prefix,
     match_candidate,
+    rank_chain,
 )
 
 MatchMode = Literal["exact", "fuzzy"]
@@ -29,6 +29,25 @@ class LibraryMatch:
     page: int | None = None
     length: int | None = None
     score: float | None = None
+
+
+@dataclass(frozen=True)
+class PartHit:
+    """One requested part resolved to a chart."""
+
+    requested: str
+    step: str  # chain step that matched
+    label: str  # the chart's own part label
+    match: LibraryMatch
+
+
+@dataclass
+class TitleSelection:
+    """Charts chosen for one title, with parts missing and warnings to show."""
+
+    hits: list[PartHit]
+    missing: list[str]
+    warnings: list[str]
 
 
 class Library(Protocol):
@@ -53,9 +72,13 @@ class DirectoryLibrary:
         self._titles: dict[str, Path] = {}
         self._files: dict[str, Path] = {}
         self._folders: dict[Path, str | None] = {}
-        self._items: list[tuple[Path, str | None]] = sorted(
-            self._discover(), key=lambda item: str(item[0])
-        )
+        # Resolved path -> path inside the library as discovered (links kept).
+        self._display: dict[Path, Path] = {}
+        discovered = sorted(self._discover(), key=lambda item: str(item[0]))
+        self._items: list[tuple[Path, str | None]] = []
+        for pdf_path, folder, display in discovered:
+            self._items.append((pdf_path, folder))
+            self._display[pdf_path] = display
         for pdf_path, folder in self._items:
             self._folders[pdf_path] = folder
             self._title_index.add(pdf_path.stem, pdf_path)
@@ -70,13 +93,14 @@ class DirectoryLibrary:
     def _is_transparent(name: str) -> bool:
         return name.startswith("_") and name != "_archive"
 
-    def _discover(self) -> list[tuple[Path, str | None]]:
-        """Every PDF below the library, with innermost title folder.
+    def _discover(self) -> list[tuple[Path, str | None, Path]]:
+        """Every PDF below the library: resolved path, innermost title folder,
+        and path inside the library as reached (symlinks kept).
 
         Follows symlinks without revisiting a real directory. `_archive`
         subtrees are skipped; `_.*` folders are transparent (name ignored).
         """
-        found: list[tuple[Path, str | None]] = []
+        found: list[tuple[Path, str | None, Path]] = []
         visited: set[tuple[int, int]] = set()
         # Stack of (lexical dir path, title-folder chain from root).
         # Chain holds folder names from library root, transparent names omitted.
@@ -102,10 +126,12 @@ class DirectoryLibrary:
                             continue
                     for entry in sorted(files, key=lambda e: e.name):
                         if entry.name.lower().endswith(".pdf"):
-                            pdf_path = (Path(current) / entry.name).resolve()
+                            lexical = Path(current) / entry.name
                             # Innermost title folder = last non-transparent chain element.
                             folder = chain[-1] if chain else None
-                            found.append((pdf_path, folder))
+                            found.append(
+                                (lexical.resolve(), folder, lexical.relative_to(self.path))
+                            )
                     for entry in sorted(dirs, key=lambda e: e.name):
                         if entry.name == "_archive":
                             continue
@@ -205,57 +231,86 @@ class DirectoryLibrary:
             score=result.score,
         )
 
-    def select_part(
-        self, title: str, requested_part: str, score_key: str | None = None
-    ) -> tuple[Path, str, str] | None:
-        """Select a file for title+part via substitution chains.
+    def display_path(self, path: Path) -> Path:
+        """Path inside the library as discovered (through links)."""
+        return self._display.get(path, path)
 
-        Returns (file, chain step, the file's part label).
+    def select_parts(
+        self, title: str, parts: list[str], score_key: str | None = None
+    ) -> TitleSelection | None:
+        """Choose a chart for each requested part of a title.
+
+        Returns None when the library has no candidate for the title. Each
+        part takes the best rank where any source (folder) has a candidate.
+        Among those: the title's top source first, then the fewest extra
+        words, then path order. One warning per title reports several
+        candidates for a part, or charts from more than one folder.
         """
-        requested = canonical_part_name(requested_part)
-        chain = chain_for_part(requested)
-        scored = self.all_candidates(title)
-        if score_key is not None and scored:
+        cands = self.all_candidates(title)
+        if not cands:
+            return None
+        warnings: list[str] = []
+        if score_key is not None:
             try:
                 wanted = normalize_key_name(score_key)
             except ValueError:
                 wanted = score_key
-            filtered = [
+            keyed = [
                 (p, c)
-                for p, c in scored
+                for p, c in cands
                 if c.score_key is not None and c.score_key.lower() == wanted.lower()
             ]
-            if filtered:
-                scored = filtered
+            if keyed:
+                cands = keyed
             else:
-                print(f'no {wanted} version of "{title}"')
-        for step in chain:
-            step_hits: list[tuple[Path, object]] = [
-                (p, c) for p, c in scored if step in c.parts or step == c.part
-            ]
-            # Dual scores list both parts; also match "Piano/Guitar" part label.
-            if not step_hits:
+                warnings.append(f'no {wanted} version of "{title}"')
+        source = {p: self.display_path(p).parent for p, _ in cands}
+        top = _top_source(parts, cands, source)
+
+        hits: list[PartHit] = []
+        missing: list[str] = []
+        others: dict[tuple[Path, tuple[Path, ...]], list[str]] = {}
+        for part in parts:
+            at_rank = _candidates_at_best_rank(part, cands)
+            if not at_rank:
+                missing.append(part)
                 continue
-            def _sort_key(item: tuple[Path, object]) -> tuple[int, str]:
-                _, c = item
-                return (c.tag_count, str(item[0]))
+            at_rank.sort(
+                key=lambda h: (
+                    source[h[0]] != top,
+                    h[1].tag_count,
+                    str(self.display_path(h[0])),
+                )
+            )
+            path, cand, step = at_rank[0]
+            hits.append(
+                PartHit(part, step, cand.part, LibraryMatch(title=title, source=path))
+            )
+            if len(at_rank) > 1:
+                rest = tuple(p for p, _, _ in at_rank[1:])
+                others.setdefault((path, rest), []).append(part)
+        if not hits:
+            return TitleSelection([], list(parts), warnings)
+        folders = sorted({str(source[h.match.source]) for h in hits})
+        lines = [
+            f"  {', '.join(names)}: {self.display_path(chosen)}"
+            f" (also {', '.join(str(self.display_path(p)) for p in rest)})"
+            for (chosen, rest), names in others.items()
+        ]
+        if len(folders) > 1:
+            lines.append(f"  charts from {len(folders)} folders: {', '.join(folders)}")
+        if lines:
+            warnings.append("\n".join([f'warning "{title}":', *lines]))
+        return TitleSelection(hits, missing, warnings)
 
-            step_hits.sort(key=_sort_key)
-            best_path, best_cand = step_hits[0]
-            if len(step_hits) > 1:
-                names = ", ".join(sorted(str(p.name) for p, _ in step_hits))
-                print(f'tie for "{title}" ({step}): {names}')
-            return best_path, step, best_cand.part
-        return None
-
-    def all_candidates(self, title: str) -> list[tuple[Path, object]]:
+    def all_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
         """All title-matching candidates with interpretation, path order.
 
         Exact prefix matches first; for fuzzy libraries with none, match the
         title against word prefixes of each name text and interpret what
         follows the matched prefix as tags.
         """
-        out: list[tuple[Path, object]] = []
+        out: list[tuple[Path, TitleCandidate]] = []
         for pdf_path, folder in self._items:
             cand = match_candidate(title, pdf_path.stem, folder)
             if cand is not None:
@@ -272,6 +327,49 @@ class DirectoryLibrary:
                     out.append((pdf_path, cand))
                     break
         return out
+
+
+def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:
+    for step in rank:
+        if step in cand.parts or step == cand.part:
+            return step
+    return None
+
+
+def _candidates_at_best_rank(
+    part: str, cands: list[tuple[Path, TitleCandidate]]
+) -> list[tuple[Path, TitleCandidate, str]]:
+    """Candidates at the first rank of the part's chain that has any."""
+    for rank in rank_chain(part):
+        at_rank = [
+            (path, cand, step)
+            for path, cand in cands
+            if (step := _matched_step(cand, rank)) is not None
+        ]
+        if at_rank:
+            return at_rank
+    return []
+
+
+def _top_source(
+    parts: list[str],
+    cands: list[tuple[Path, TitleCandidate]],
+    source: dict[Path, Path],
+) -> Path:
+    """Folder with the most requested parts at their own step, then the
+    fewest extra words, then path order."""
+    own: dict[Path, int] = {}
+    extra: dict[Path, int] = {}
+    for path, cand in cands:
+        folder = source[path]
+        extra[folder] = min(extra.get(folder, cand.tag_count), cand.tag_count)
+        own.setdefault(folder, 0)
+    for part in parts:
+        for folder in {
+            source[path] for path, cand in cands if part in cand.parts or part == cand.part
+        }:
+            own[folder] += 1
+    return min(extra, key=lambda folder: (-own[folder], extra[folder], str(folder)))
 
 
 class IndexedTune(BaseModel):
@@ -407,82 +505,38 @@ class LibraryCollection:
                 return result
         return None
 
-    def select_part(
-        self, title: str, requested_part: str, score_key: str | None = None
-    ) -> tuple[LibraryMatch, str] | None:
-        """Select title+part across libraries, highest priority first.
+    def select_parts(
+        self, title: str, parts: list[str], score_key: str | None = None
+    ) -> TitleSelection | None:
+        """Choose charts for a title's parts, highest-priority library first.
 
-        Indexed libraries answer any part request with their pages.
-        Directory libraries use substitution chains; first library with a hit
-        wins at its earliest chain step.
+        The first library with a chart on any requested part's chain wins the
+        title; parts it lacks are missing, never taken from a lower library,
+        so one title's parts belong to one arrangement. Indexed libraries
+        answer every part with their concert pages. Returns None when no
+        library has the title at all.
         """
+        found: TitleSelection | None = None
         for library in reversed(self._libraries):
-            if isinstance(library, LibraryCollection):
-                result = library.select_part(title, requested_part, score_key)
-                if result is not None:
-                    return result
-            elif isinstance(library, DirectoryLibrary):
-                hit = library.select_part(title, requested_part, score_key)
-                if hit is not None:
-                    source, step, _label = hit
-                    return LibraryMatch(title=title, source=source), step
+            if isinstance(library, (LibraryCollection, DirectoryLibrary)):
+                selection = library.select_parts(title, parts, score_key)
             else:
                 match = library.lookup_title(title)
-                if match is not None:
-                    return match, "Concert"
-        return None
-
-    def select_subparts(
-        self, title: str, subparts: list[str], score_key: str | None = None
-    ) -> tuple[list[tuple[str, str, str, LibraryMatch]], list[str]] | None:
-        """Resolve several subparts with per-title library lock.
-
-        Each hit is (requested part, chain step, chart's part label, match).
-
-        The winning library is the highest-priority one with a chain hit on
-        ANY requested subpart. Remaining subparts resolve only within the
-        winner (missing, never falling through to lower libraries), so one
-        title's parts always come from a single arrangement.
-        Returns (hits, missing) or None when no library has the title on any
-        requested chain.
-        """
-        title_found = False
-        for library in reversed(self._libraries):
-            if isinstance(library, LibraryCollection):
-                result = library.select_subparts(title, subparts, score_key)
-                if result is not None:
-                    return result
-                continue
-            if isinstance(library, DirectoryLibrary):
-                if library.all_candidates(title):
-                    title_found = True
-                hits: list[tuple[str, str, str, LibraryMatch]] = []
-                missing: list[str] = []
-                any_hit = False
-                for sub in subparts:
-                    requested_canon = canonical_part_name(sub)
-                    hit = library.select_part(title, requested_canon, score_key)
-                    if hit is None:
-                        missing.append(requested_canon)
-                    else:
-                        any_hit = True
-                        source, step, label = hit
-                        hits.append(
-                            (requested_canon, step, label, LibraryMatch(title=title, source=source))
-                        )
-                if not any_hit:
-                    continue
-                return hits, missing
-            match = library.lookup_title(title)
-            if match is not None:
-                title_found = True
-                return (
-                    [(canonical_part_name(s), "Concert", "Concert", match) for s in subparts],
-                    [],
+                selection = (
+                    TitleSelection(
+                        [PartHit(part, "Concert", "Concert", match) for part in parts],
+                        [],
+                        [],
+                    )
+                    if match is not None
+                    else None
                 )
-        if title_found:
-            return [], [canonical_part_name(s) for s in subparts]
-        return None
+            if selection is None:
+                continue
+            if selection.hits:
+                return selection
+            found = found or selection
+        return found
 
     def all_candidates(self, title: str) -> list[tuple[str, Path, object | None]]:
         """All candidates per library for -vv, highest priority first."""

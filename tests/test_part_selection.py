@@ -75,8 +75,8 @@ def test_tie_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     render(layout, tmp_path / "book.pdf", part="Piano")
 
     out = capsys.readouterr().out
-    assert "tie" in out
-    assert "Mo Better Blues" in out
+    assert out.count('warning "Mo Better Blues"') == 1
+    assert "Piano: Mo Better Blues/Mo Better Blues-Piano.pdf (also" in out
 
 
 def test_library_priority_vault_beats_index(tmp_path: Path) -> None:
@@ -163,4 +163,4 @@ def test_fuzzy_title_keeps_part_from_stem(
 
     out = capsys.readouterr().out
     assert "lead-sheet-C_Major.pdf" in out
-    assert "tie for" not in out
+    assert "warning" not in out

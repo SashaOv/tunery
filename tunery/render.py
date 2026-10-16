@@ -19,6 +19,7 @@ from tunery.library import (
     PROJECT_CONFIG_PARENT_LIMIT,
     LibraryCollection,
     LibraryRecord,
+    PartHit,
     load_project_libraries,
 )
 from tunery.parts import canonical_part_name, normalize_text
@@ -344,25 +345,20 @@ def process_file_entry(
         )
     if libraries is None:
         return NotFoundResult(title=title)
-    # Title exists if any candidate (or indexed hit) matches.
-    existing = libraries.all_candidates(title)
-    if not existing:
+    selection = libraries.select_parts(title, subparts, entry.key)
+    if selection is None:
         return NotFoundResult(title=title)
-    locked = libraries.select_subparts(title, subparts, entry.key)
-    if locked is None:
-        return NotFoundResult(title=title)
-    locked_hits, locked_missing = locked
-    for sub in locked_missing:
+    for warning in selection.warnings:
+        print(warning)
+    for sub in selection.missing:
         print(f'missing {sub} for "{title}"')
-    hits: list[tuple[str, str, str, object]] = []  # (subpart, step, label, match)
-    for requested_canon, step, label, match in locked_hits:
-        hits.append((requested_canon, step, label, match))
-        if verbose >= 1:
-            print(f'  "{title}" {requested_canon}: {match.source.name}')
-            if step != requested_canon:
-                print(f"  {requested_canon} → {step}")
+    if verbose >= 1:
+        for hit in selection.hits:
+            print(f'  "{title}" {hit.requested}: {hit.match.source.name}')
+            if hit.step != hit.requested:
+                print(f"  {hit.requested} → {hit.step}")
     if verbose >= 2:
-        for lib_desc, path, cand in existing:
+        for lib_desc, path, cand in libraries.all_candidates(title):
             if cand is None:
                 print(f'  candidate "{title}" in "{lib_desc}" ({path.name}): indexed')
             else:
@@ -370,19 +366,17 @@ def process_file_entry(
                     f'  candidate "{title}" in "{lib_desc}" ({path.name}): '
                     f"part={cand.part}, key={cand.score_key}, "
                     f"var={cand.variations}, free={cand.free_tags}, "
-                    f"rules={cand.rules_fired}"
+                    f"noise={cand.noise}, rules={cand.rules_fired}"
                 )
-    if not hits:
+    if not selection.hits:
         return NotFoundResult(title=title)
-    # Dedupe same file, preserving first subpart order.
-    seen: dict[Path, tuple[str, str, str, object]] = {}
-    for requested_canon, step, label, match in hits:
-        src = match.source.resolve() if hasattr(match.source, "resolve") else match.source
-        if src not in seen:
-            seen[src] = (requested_canon, step, label, match)
-    unique = list(seen.values())
+    # One chart per file (and page range), in requested-part order.
+    first_hits: dict[tuple[Path, int | None], PartHit] = {}
+    for hit in selection.hits:
+        first_hits.setdefault((hit.match.source, hit.match.page), hit)
+    unique = list(first_hits.values())
     if len(unique) == 1:
-        _requested, _step, _label, match = unique[0]
+        match = unique[0].match
         page = entry.page if entry.page is not None else match.page
         length = entry.length if entry.length is not None else match.length
         entry_page = composer.add(
@@ -398,13 +392,12 @@ def process_file_entry(
         )
     composer.start_section(title)
     first_page: int | None = None
-    first_source: object = unique[0][3].source
-    for _requested, _step, label, match in unique:
-        page = entry.page if entry.page is not None else match.page
-        length = entry.length if entry.length is not None else match.length
+    for hit in unique:
+        page = entry.page if entry.page is not None else hit.match.page
+        length = entry.length if entry.length is not None else hit.match.length
         entry_page = composer.add(
-            title=label,
-            source=match.source,
+            title=hit.label,
+            source=hit.match.source,
             start=page,
             pages=length,
             notes=entry.notes,
@@ -415,7 +408,7 @@ def process_file_entry(
     return SuccessResult(
         title=title,
         page=first_page or 0,
-        source_path=first_source,  # type: ignore[arg-type]
+        source_path=unique[0].match.source,
         source_page=None,
         matched_title=matched_title,
         score=score,
