@@ -55,7 +55,7 @@ def test_verbose1_reports_file_and_substitution(
     out = capsys.readouterr().out
     assert "Mack-Piano.pdf" in out
     assert "Heartaches-Concert.pdf" in out
-    assert "Piano → Concert" in out
+    assert "  Piano → Concert" not in out
 
 
 def test_verbose2_adds_candidates_and_rules(
@@ -72,3 +72,19 @@ def test_verbose2_adds_candidates_and_rules(
     assert "part=Piano" in out
     assert "rules=" in out
     assert "instrument" in out
+
+
+def test_substitutions_warned_once_per_title_without_verbose(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_fixture(tmp_path)
+    layout = write_layout(
+        tmp_path / "gig.yaml", [{"title": "Mack"}, {"title": "Heartaches"}]
+    )
+
+    render(layout, tmp_path / "book.pdf", part="Piano")
+
+    out = capsys.readouterr().out
+    assert "Heartaches: Piano → Concert" in out
+    assert out.count("Heartaches: Piano → Concert") == 1
+    assert "Mack:" not in out

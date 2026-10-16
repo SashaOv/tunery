@@ -328,11 +328,18 @@ def select_and_add(
         print(warning)
     for sub in selection.missing:
         print(f'missing {sub} for "{title}"')
+    substituted: dict[str, list[str]] = {}
+    for hit in selection.hits:
+        if hit.step != hit.requested:
+            substituted.setdefault(hit.step, []).append(hit.requested)
+    if substituted:
+        groups = [
+            f"{', '.join(reqs)} → {step}" for step, reqs in substituted.items()
+        ]
+        print(f"{title}: {'; '.join(groups)}")
     if verbose >= 1:
         for hit in selection.hits:
             print(f'  "{title}" {hit.requested}: {hit.match.source.name}')
-            if hit.step != hit.requested:
-                print(f"  {hit.requested} → {hit.step}")
     if verbose >= 2:
         for lib_desc, path, cand in libraries.all_candidates(title):
             if cand is None:

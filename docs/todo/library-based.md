@@ -264,10 +264,10 @@ structure on top. `file:` layouts keep working unchanged.
   `key` is the score key.
 - **Verbosity:**
   - default: found / not found per chart, source and candidate warnings,
-    missing parts;
+    missing parts, and one substitution line per title that substituted
+    (`Heartaches: Piano, Guitar, Bass, Drums → Concert`);
   - `-v` / `--verbose 1`: additionally, the configuration file used, and per
-    title the file used for each part and every substitution taken
-    (`Piano → Concert`);
+    title the file used for each part;
   - `-vv` / `--verbose 2`: additionally, every candidate (library, file,
     part, variation, free tags) and the name-interpretation rules that
     fired.
@@ -816,7 +816,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   - I Can't Help It's concert chart is `- Piano`;
   - Cape Verdean's Piano part is `- rhythm`, not the concert chart;
   - Girl From Ipanema still takes `-Voice`.
-- **LIB6.5** Substitutions as default-level warnings, one line per title in
+- [x] **LIB6.5** Substitutions as default-level warnings, one line per title in
   the per-title warning (`Heartaches: Piano, Guitar, Bass, Drums →
   Concert`). `-v` then adds file names only. Tests: the line appears without
   `-v`, once per title; no line when nothing was substituted.

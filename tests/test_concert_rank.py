@@ -91,11 +91,11 @@ def test_girl_from_ipanema_takes_voice(
     (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
     layout = write_layout(tmp_path / "show.yaml", [{"title": "Girl"}])
 
-    render(layout, tmp_path / "show.pdf", verbose=1)
+    render(layout, tmp_path / "show.pdf", verbose=0)
 
     out = capsys.readouterr().out
-    assert '"Girl" Concert: Girl-Voice.pdf' in out
-    assert "Concert → Vocal" in out
+    assert '"Girl" Concert: Girl-Voice.pdf' not in out
+    assert "Girl: Concert → Vocal" in out
 
 
 def test_flute_no_longer_substitutes_for_concert(
