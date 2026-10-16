@@ -39,10 +39,10 @@ DIFFERENCES: dict[str, dict[str, tuple[set[str], set[str]]]] = {
     },
     "full": {
         **{title: (set(), {chart}) for title, chart in BB_PARTS_TENOR.items()},
-        # SheetMusic and _Petes tie as top source; path order picks SheetMusic,
-        # whose Bb chart shares Tenor Sax's rank (warned).
+        # Trumpet's Bb and the Concert chart exist only in SheetMusic's other
+        # folder (warned as charts from 2 folders).
         "The Cape Verdean Blues": (
-            {"The Cape Verdean Blues - tenor (horn 2).pdf"},
+            set(),
             {"The Cape Verdean Blues.Bb.pdf", "The Cape Verdean Blues.pdf"},
         ),
         # The {Tenor Sax: Flute} mapping applies to every book.

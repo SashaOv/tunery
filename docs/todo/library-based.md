@@ -210,10 +210,15 @@ structure on top. `file:` layouts keep working unchanged.
 - **Choice per part:** each part takes the best rank at which any source has
   a candidate. Among the candidates at that rank, the order is:
   1. those carrying the chart's `tag:`;
-  2. those in the top source;
-  3. the fewest extra words (variations, free tags and noise words each add
+  2. the fewest substitution steps: a chart's position in the part's chain,
+     0 for the part itself (`tenor (horn 2)` before `.Bb` for Tenor Sax;
+     Alto Sax before Eb for Alto Sax 2). A chart's `part:` mapping is not a
+     substitution: the mapped part is the one requested (author,
+     2026-10-15);
+  3. those in the top source;
+  4. the fewest extra words (variations, free tags and noise words each add
      1: `Creepin.pdf`, 0, beats `Creepin.iRealPro.pdf`, 1);
-  4. path order.
+  5. path order.
 
   Example: Poinciana's Bass is only in `_Petes/Poinciana`, which makes it
   the top source, so its concert chart wins over `SheetMusic/Poinciana`'s.
@@ -499,7 +504,7 @@ books.
 
 ### LIB5: Three Crosswinds books from one title list
 
-Status: planned, approved 2026-10-15
+Status: executed, pending author verification
 
 **Improvement:** one title-only layout renders the Crosswinds show's three
 books (rhythm section, Norm's tenor book and the full band book) from
@@ -603,6 +608,12 @@ reads the real libraries.
     - every expected difference listed under Acceptance comes with its
       warning.
 
+- [x] **LIB5.12** Break ties at one rank by the fewest substitution steps
+  (Choice per part, step 2), before the top source. Found by acceptance; the
+  author asked for the step-count form and for it to be checked in as
+  LIB5.12 (2026-10-15). Tests: Cape Verdean keeps `tenor (horn 2)` for
+  Tenor Sax; Alto Sax 2 takes Alto Sax over Eb.
+
 **Acceptance:**
 
 - *Scripted (the gate in `AGENTS.md`: ruff + pytest):* all existing tests pass; the LIB5.2–LIB5.11 tests
@@ -656,9 +667,45 @@ expected: `26-09-15.rs.yaml` missed it (author, 2026-10-15).
   (`SheetMusic/Bb Parts`, `SheetMusic/I Cant Help It`) out of SheetMusic.
   The live check runs before that, with them in place.
 
+**Acceptance run 2026-10-15** on tree `b14fd59` (LIB5.11) plus one
+uncommitted fix (below). Environment: Python 3.12.12, ruff 0.17.1, host L25,
+macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
+
+- Gate: `uv run ruff check tunery tests` clean; `uv run pytest -q` 158
+  passed (157 before the fix).
+- Live Crosswinds: `tunery render GDrive/Shows/26-09-15/26-09-15.1.yaml
+  --part rs --part norm --part full --explicit-bookmark-hierarchy -v`, run
+  from `/Users/sasha/personal/crosswinds`, exit 0.
+  - `-v` names `/Users/sasha/personal/crosswinds/GDrive/Shows/tunery.yaml`.
+  - Three books: `26-09-15.1.RS.pdf` (the `RS` label, per Output; the text
+    above said `.rs.pdf`), `.norm.pdf`, `.full.pdf`. 23 titles each, none
+    missing.
+  - rs: 22/23 match, plus Norwegian Wood's Piano:Guitar, as expected.
+  - norm: 18/23 match. The four `Bb Parts` titles differ, each warned.
+    Funk in Deep Freeze takes Tenor, because the author's layout has no
+    `{Tenor Sax: Flute}` mapping.
+  - full: 18/23 match. The four `Bb Parts` titles add their tenor chart,
+    and The Cape Verdean Blues adds SheetMusic's `.Bb` and `.pdf`; each is
+    warned. Norwegian Wood matches exactly (`key: F` keeps SheetMusic's
+    unkeyed concert chart out), and `SheetMusic/I Cant Help It` was already
+    moved out.
+  - Part bookmarks carry the `_ ` prefix.
+- Live regression: JBM from `apps/JBM` gives the same 22 picks as LIB4.
+  From `/Users/sasha/personal/wip`, `-vv` uses `apps/JBM/tunery.yaml` and
+  lists no candidate outside Vault and the real books.
+- Fix found by acceptance (uncommitted): before it, full-book Cape Verdean
+  replaced `tenor (horn 2)` with SheetMusic's `.Bb`, because the folders
+  tied as top source and path order chose SheetMusic. Now, at one rank, the
+  fewest substitution steps win (Choice per part, step 2; author's
+  generalization). Two new tests in `tests/test_sources.py` fail without it. The 26-09-15 test now
+  expects Cape Verdean to keep its tenor chart.
+
 **Author action required at completion:**
 
 - Review the three rendered books musically.
+- Optional: add `part: {Tenor Sax: Flute}` to Funk in Deep Freeze in
+  `26-09-15.1.yaml`. Note that it then applies to the full book too, which
+  drops the Tenor chart there (the mapping is keyed by part, not by book).
 
 ## Backlog
 

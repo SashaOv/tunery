@@ -11,6 +11,7 @@ from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename, normalize_key_name
 from tunery.parts import (
     TitleCandidate,
+    chain_for_part,
     fuzzy_title_prefix,
     match_candidate,
     normalize_text,
@@ -285,8 +286,10 @@ class DirectoryLibrary:
 
         Returns None when the library has no candidate for the title. Each
         part takes the best rank where any source (folder) has a candidate.
-        Among those: candidates carrying all `tags`, then the title's top
-        source, then the fewest extra words, then path order. One warning per title reports several
+        Among those: candidates carrying all `tags`, then the fewest
+        substitution steps, then the title's top source, then the fewest
+        extra words, then path order. A part mapped by the chart's `part:`
+        is requested as such, so the mapping is not a substitution. One warning per title reports several
         candidates for a part, or charts from more than one folder.
         """
         cands = self.all_candidates(title)
@@ -326,9 +329,11 @@ class DirectoryLibrary:
             if not at_rank:
                 missing.append(part)
                 continue
+            chain = chain_for_part(part)
             at_rank.sort(
                 key=lambda h: (
                     not carries_tags(h[1]),
+                    chain.index(h[2]),  # substitution steps
                     source[h[0]] != top,
                     h[1].tag_count,
                     str(self.display_path(h[0])),

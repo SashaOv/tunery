@@ -77,3 +77,36 @@ def test_stray_source_is_named(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert tree == [("I Can't Help It", ["Concert", "Tenor Sax"])]
     assert "charts from 2 folders: I Cant Help It, _Petes/I Can't Help It" in out
     assert out.count("warning") == 1
+
+
+def test_part_itself_beats_its_key_group_at_a_rank(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(
+        tmp_path / "SheetMusic",
+        [
+            "Blues/Blues.pdf",
+            "Blues/Blues.Bb.pdf",
+            "_Petes/Blues/Blues - tenor (horn 2).pdf",
+        ],
+    )
+    (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Blues"}])
+
+    render(layout, tmp_path / "book.pdf", part=["Concert,Tenor Sax"], verbose=1)
+
+    assert '"Blues" Tenor Sax: Blues - tenor (horn 2).pdf' in capsys.readouterr().out
+
+
+def test_fewer_substitution_steps_win_within_a_rank(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Alto Sax 2 -> [Alto Sax 2], [Alto Sax, Eb]: Alto Sax is one substitution,
+    # Eb two; path order alone would pick the Eb chart in folder A.
+    create_pdfs(tmp_path / "SheetMusic", ["A/Tune - Eb.pdf", "B/Tune - Alto Sax.pdf"])
+    (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Tune"}])
+
+    render(layout, tmp_path / "book.pdf", part=["Alto Sax 2"], verbose=1)
+
+    assert '"Tune" Alto Sax 2: Tune - Alto Sax.pdf' in capsys.readouterr().out
