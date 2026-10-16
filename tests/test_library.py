@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pikepdf
 import pytest
+import yaml
 
 from tunery.library import (
     DirectoryLibrary,
@@ -12,7 +13,7 @@ from tunery.library import (
     find_project_config,
     load_project_libraries,
 )
-from tunery.render import lookup_and_extract
+from tunery.render import lookup_and_extract, render
 
 
 def create_pdf(path: Path, page_count: int = 1) -> Path:
@@ -344,3 +345,43 @@ def test_yaml_collection_reports_invalid_contents(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid library collection"):
         LibraryRecord(library=str(collection)).load(tmp_path)
+
+
+def test_collection_through_folder_link_stays_in_view(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    real = tmp_path / "real"
+    chart = create_pdf(real / "scores" / "Tune.pdf")
+    assert chart.exists()
+    (tmp_path / "Link").symlink_to(real, target_is_directory=True)
+    (tmp_path / "Link" / "collection.yaml").write_text("- library: scores\n")
+    layout = tmp_path / "show.yaml"
+    layout.write_text(
+        yaml.safe_dump(
+            [
+                {"config": [{"library": "Link/collection.yaml"}]},
+                {"title": "Tune"},
+            ]
+        )
+    )
+
+    render(layout, tmp_path / "show.pdf", verbose=1)
+
+    out = capsys.readouterr().out
+    assert "Link/scores" in out
+    assert "real/scores" not in out
+
+
+def test_symlinked_collection_file_resolves_against_real_location(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real"
+    chart = create_pdf(real / "scores" / "Tune.pdf")
+    (real / "collection.yaml").write_text("- library: scores\n")
+    (tmp_path / "collection.yaml").symlink_to(real / "collection.yaml")
+
+    libraries = LibraryCollection(
+        [LibraryRecord(library="collection.yaml").load(tmp_path)]
+    )
+
+    assert libraries.lookup_title("Tune").source == chart

@@ -51,7 +51,8 @@ structure on top. `file:` layouts keep working unchanged.
   layout's directory (the base for `lookup`), and the existing notice is
   printed.
 - A config that is itself a symlinked *file* resolves its relative paths
-  against its real location (unchanged).
+  against its real location (unchanged). A collection file reached through a
+  linked folder stays in the file-system view, like a project config.
 - Library records keep their fields (`library`, `source`, `shift`, `match`)
   and gain `type`. Forced per-item metadata in the record overrides
   everything derived from names (backlog).
@@ -820,7 +821,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   the per-title warning (`Heartaches: Piano, Guitar, Bass, Drums →
   Concert`). `-v` then adds file names only. Tests: the line appears without
   `-v`, once per title; no line when nothing was substituted.
-- **LIB6.6** One path resolver for configs, collections and layouts. A
+- [x] **LIB6.6** One path resolver for configs, collections and layouts. A
   collection reached through a folder link resolves lexically, like a
   project config; a symlinked collection file still resolves against its
   real location. Test: the review's `Link/collection.yaml` case shows

@@ -629,7 +629,12 @@ class LibraryRecord(BaseModel):
         path through a link stays in the file-system view."""
         path = lexical_absolute(Path(self.library), base_dir)
         if path.suffix.lower() in (".yaml", ".yml") and path.is_file():
-            return self._load_collection(path.resolve(), _seen)
+            # A symlinked collection file resolves its paths against its real
+            # location; otherwise they stay in the file-system view, even
+            # through a linked folder.
+            return self._load_collection(
+                path.resolve() if path.is_symlink() else path, _seen
+            )
         if path.is_dir():
             if "source" in self.model_fields_set:
                 raise ValueError(
