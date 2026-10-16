@@ -93,21 +93,81 @@ def test_render_relative_layout_uses_logical_cwd(
         assert len(pdf.pages) == 1
 
 
-def test_render_explicit_base_overrides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = tmp_path / "project"
+def make_linked_project(root: Path) -> Path:
+    """proj/tunery.yaml with proj/GDrive -> a separate tree holding the show."""
+    project = root / "proj"
+    real_gdrive = root / "real-gdrive"
+    (real_gdrive / "Shows" / "x").mkdir(parents=True)
     create_pdf(project / "Vault" / "chart.pdf", 1)
     (project / "tunery.yaml").write_text("- library: Vault\n")
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    layout_path = write_layout(elsewhere / "gig.yaml", [{"title": "chart"}])
-    monkeypatch.chdir(elsewhere)
+    (project / "GDrive").symlink_to(real_gdrive, target_is_directory=True)
+    write_layout(project / "GDrive" / "Shows" / "x" / "x.yaml", [{"title": "chart"}])
+    return project
 
-    render(layout_path, tmp_path / "out.pdf", base=project)
 
+def in_dir(monkeypatch: pytest.MonkeyPatch, directory: Path) -> None:
+    monkeypatch.chdir(directory)
+    monkeypatch.setenv("PWD", str(directory))
+
+
+def test_relative_layout_from_parent_folder_finds_project_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_linked_project(tmp_path)
+    create_pdf(tmp_path / "chart.pdf", 3)  # must not be scanned
+    in_dir(monkeypatch, tmp_path)
+
+    render(Path("proj/GDrive/Shows/x/x.yaml"), Path("out.pdf"), verbose=1)
+
+    out = capsys.readouterr().out
+    assert f"configuration {tmp_path / 'proj' / 'tunery.yaml'}" in out
+    assert "Project configuration was not found" not in out
     with pikepdf.Pdf.open(tmp_path / "out.pdf") as pdf:
         assert len(pdf.pages) == 1
+
+
+def test_base_anchors_relative_command_line_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_linked_project(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    in_dir(monkeypatch, elsewhere)
+
+    render(Path("GDrive/Shows/x/x.yaml"), Path("out.pdf"), base=project)
+
+    with pikepdf.Pdf.open(project / "out.pdf") as pdf:
+        assert len(pdf.pages) == 1
+
+
+def test_without_config_only_layout_folder_is_searched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdf(tmp_path / "chart.pdf", 1)
+    write_layout(tmp_path / "show" / "gig.yaml", [{"title": "chart"}])
+    in_dir(monkeypatch, tmp_path)
+
+    render(Path("show/gig.yaml"), Path("out.pdf"))
+
+    out = capsys.readouterr().out
+    assert "Project configuration was not found" in out
+    assert 'not found "chart"' in out
+
+
+def test_found_shows_paths_through_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = tmp_path / "proj"
+    create_pdf(tmp_path / "cloud" / "Tune" / "Tune.pdf", 1)
+    project.mkdir()
+    (project / "Link").symlink_to(tmp_path / "cloud", target_is_directory=True)
+    (project / "tunery.yaml").write_text("- library: Link\n")
+    write_layout(project / "gig.yaml", [{"title": "Tune"}])
+    in_dir(monkeypatch, project)
+
+    render(Path("gig.yaml"), Path("out.pdf"))
+
+    assert f'found    "Tune" in "{project / "Link" / "Tune"}"' in capsys.readouterr().out
 
 
 def test_load_project_libraries_uses_base_without_config(

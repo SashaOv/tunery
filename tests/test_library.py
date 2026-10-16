@@ -25,16 +25,13 @@ def create_pdf(path: Path, page_count: int = 1) -> Path:
     return path
 
 
-def test_find_project_config_searches_at_most_eight_parents(tmp_path: Path) -> None:
+def test_find_project_config_walks_up_to_the_root(tmp_path: Path) -> None:
     config = tmp_path / "tunery.yaml"
     config.write_text("[]\n")
-    within_limit = tmp_path.joinpath(*[f"level-{i}" for i in range(8)])
-    within_limit.mkdir(parents=True)
-    beyond_limit = within_limit / "level-8"
-    beyond_limit.mkdir()
+    deep = tmp_path.joinpath(*[f"level-{i}" for i in range(12)])
+    deep.mkdir(parents=True)
 
-    assert find_project_config(within_limit) == config
-    assert find_project_config(beyond_limit) is None
+    assert find_project_config(deep) == config
 
 
 def test_load_project_libraries_defaults_to_current_directory(

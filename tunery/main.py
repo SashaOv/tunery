@@ -33,7 +33,7 @@ def render_command(
         Path | None,
         Parameter(
             ["--base"],
-            help="Base directory for project config discovery (default: logical cwd or layout directory).",
+            help="Base directory: relative paths on the command line resolve against it (default: working directory).",
         ),
     ] = None,
     part: Annotated[
@@ -101,7 +101,7 @@ def lookup_command(
         Path | None,
         Parameter(
             ["--base"],
-            help="Base directory for project config discovery (default: logical cwd).",
+            help="Base directory: configuration is found from it and relative paths resolve against it (default: working directory).",
         ),
     ] = None,
 ) -> None:

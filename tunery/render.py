@@ -1,6 +1,5 @@
 """PDF rendering logic for combining PDFs with table of contents."""
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,11 +23,12 @@ from tunery.keys import (
     output_path_for_key,
 )
 from tunery.library import (
-    PROJECT_CONFIG_PARENT_LIMIT,
     LibraryCollection,
     LibraryRecord,
     PartHit,
+    lexical_absolute,
     load_project_libraries,
+    logical_cwd,
 )
 from tunery.parts import canonical_part_name, is_known_part, normalize_text
 
@@ -87,31 +87,6 @@ class ConfigEntry(BaseModel):
 class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
     """The complete layout schema - a list of config, sections, and/or file entries."""
 
-
-
-def logical_cwd() -> Path:
-    """Working directory without resolving symlinks.
-
-    After `cd` through a symlink, `os.getcwd()` / `Path.cwd()` return the
-    physical target. POSIX shells keep the logical path in `$PWD`; use that
-    when it still names the current directory.
-    """
-    pwd = os.environ.get("PWD")
-    if pwd:
-        logical = Path(pwd)
-        try:
-            if logical.samefile("."):
-                return logical
-        except OSError:
-            pass
-    return Path.cwd()
-
-
-def lexical_absolute(path: Path) -> Path:
-    """Absolute path with `.`/`..` collapsed and intermediate symlinks kept."""
-    if not path.is_absolute():
-        path = logical_cwd() / path
-    return Path(os.path.normpath(path))
 
 
 RHYTHM_SECTION = ["Piano", "Guitar", "Bass", "Drums"]
@@ -201,25 +176,13 @@ def resolve_path(path_str: str, base_dir: Path) -> Path:
     climbs above symlinked parents instead of their targets.
     """
     path = Path(path_str)
-    if path.is_absolute():
-        return path
-    return lexical_absolute(base_dir / path)
+    return lexical_absolute(path, base_dir)
 
 
-def resolve_base_dir(
-    layout_path: Path | None, explicit_base: Path | None
-) -> tuple[Path, int | None]:
-    """Choose the config search base and parent-walk limit.
-
-    Explicit `--base` wins. Otherwise a relative layout path (or no layout)
-    searches from the logical working directory with at most eight parents;
-    an absolute layout path searches from its directory up to the root.
-    """
-    if explicit_base is not None:
-        return lexical_absolute(explicit_base), None
-    if layout_path is not None and layout_path.is_absolute():
-        return lexical_absolute(layout_path.parent), None
-    return logical_cwd(), PROJECT_CONFIG_PARENT_LIMIT
+def view_base(base: Path | None) -> Path:
+    """Root of the file-system view: `--base`, else the logical working
+    directory. Relative command-line paths join it."""
+    return lexical_absolute(base) if base is not None else logical_cwd()
 
 
 @dataclass
@@ -355,7 +318,7 @@ def process_file_entry(
         return SuccessResult(
             title=title,
             page=entry_page,
-            source_path=input_pdf_path,
+            source_path=library_match.shown if library_match else input_pdf_path,
             source_page=page,
             matched_title=matched_title,
             score=score,
@@ -382,7 +345,7 @@ def process_file_entry(
         return SuccessResult(
             title=title,
             page=entry_page,
-            source_path=input_pdf_path,
+            source_path=library_match.shown,
             source_page=page,
             matched_title=matched_title,
             score=score,
@@ -435,7 +398,7 @@ def process_file_entry(
         return SuccessResult(
             title=title,
             page=entry_page,
-            source_path=match.source,
+            source_path=match.shown,
             source_page=page,
             matched_title=matched_title,
             score=score,
@@ -458,7 +421,7 @@ def process_file_entry(
     return SuccessResult(
         title=title,
         page=first_page or 0,
-        source_path=unique[0].match.source,
+        source_path=unique[0].match.shown,
         source_page=None,
         matched_title=matched_title,
         score=score,
@@ -520,10 +483,16 @@ def render(
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
+    Relative `layout_path` and `output` join `base` (default: the logical
+    working directory); configuration is found from the layout's folder.
+
     Renders one setbook per key edition and per --part option. `--part`
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>+<B>.pdf`.
     """
+    root = view_base(base)
+    layout_path = lexical_absolute(layout_path, root)
+    output = lexical_absolute(output, root)
     try:
         with open(str(layout_path), "r") as file:
             file_content = file.read()
@@ -548,10 +517,11 @@ def render(
 
     key_list = expand_keys(list(keys) if keys else [])
 
-    base_dir, limit = resolve_base_dir(layout_path, base)
-    libraries = load_project_libraries(base_dir, limit)
+    libraries = load_project_libraries(layout_path.parent)
+    if verbose >= 1:
+        print(f"configuration {libraries.config_path or 'not found'}")
 
-    layout_base = lexical_absolute(layout_path.parent)
+    layout_base = layout_path.parent
     layout_entries: list[SectionEntry | FileEntry] = []
     named_parts: dict[str, str] = {}
     for record in layout.root:
@@ -564,7 +534,7 @@ def render(
         else:
             layout_entries.append(record)
 
-    default_dir = lexical_absolute(layout_path.parent)
+    default_dir = layout_path.parent
     show_key = len(key_list) > 1
     part_specs = expand_part_specs(part, named_parts)
 
@@ -599,24 +569,20 @@ def lookup_and_extract(
         title: The title to search for.
         output: Output path - if file, use as-is; if directory, save <title>.pdf there;
                 if None, save <title>.pdf in current directory.
-        base: Explicit config search base (`--base`).
+        base: Root of the file-system view (`--base`); configuration is
+              found from it, and a relative `output` joins it.
     """
-    base_dir, limit = resolve_base_dir(None, base)
-    libraries = load_project_libraries(base_dir, limit)
+    root = view_base(base)
+    libraries = load_project_libraries(root)
     library_match = libraries.lookup_title(title)
     if library_match is None:
         print(f'No matches found for "{title}"')
         return
 
     matched_title = library_match.title
-    output_path = (
-        Path(f"{matched_title}.pdf")
-        if output is None
-        else output / f"{matched_title}.pdf"
-        if output.is_dir()
-        else output
-    )
-    location = format_source_location(library_match.source, library_match.page)
+    output = lexical_absolute(output or Path(), root)
+    output_path = output / f"{matched_title}.pdf" if output.is_dir() else output
+    location = format_source_location(library_match.shown, library_match.page)
     print(f'Found "{matched_title}" in {location}')
     with Composer(output_path, autosave=False) as composer:
         composer.add(

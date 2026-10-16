@@ -20,7 +20,6 @@ from tunery.parts import (
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
 PROJECT_CONFIG_NAMES = ("tunery.yaml", ".tunery.yaml")
-PROJECT_CONFIG_PARENT_LIMIT = 8
 
 
 @dataclass(frozen=True)
@@ -30,6 +29,40 @@ class LibraryMatch:
     page: int | None = None
     length: int | None = None
     score: float | None = None
+    # `source` as reached through links (file-system view), for messages.
+    view: Path | None = None
+
+    @property
+    def shown(self) -> Path:
+        return self.view or self.source
+
+
+def logical_cwd() -> Path:
+    """Working directory without resolving symlinks.
+
+    After `cd` through a symlink, `os.getcwd()` / `Path.cwd()` return the
+    physical target. POSIX shells keep the logical path in `$PWD`; use that
+    when it still names the current directory.
+    """
+    pwd = os.environ.get("PWD")
+    if pwd:
+        logical = Path(pwd)
+        try:
+            if logical.samefile("."):
+                return logical
+        except OSError:
+            pass
+    return Path.cwd()
+
+
+def lexical_absolute(path: Path, base: Path | None = None) -> Path:
+    """Absolute path joined to `base` (default: logical working directory),
+    with `.`/`..` collapsed and symlinks kept."""
+    if not path.is_absolute() and base is not None:
+        path = base / path
+    if not path.is_absolute():
+        path = logical_cwd() / path
+    return Path(os.path.normpath(path))
 
 
 @dataclass(frozen=True)
@@ -63,10 +96,12 @@ class Library(Protocol):
 
 class DirectoryLibrary:
     def __init__(self, path: Path, *, match: MatchMode = "exact") -> None:
+        # `path` as given is the library's place in the file-system view.
+        self.view_path = lexical_absolute(path)
         self.path = path.resolve()
         self.match = match
         if not self.path.is_dir():
-            raise ValueError(f"Library directory not found: {self.path}")
+            raise ValueError(f"Library directory not found: {self.view_path}")
 
         self._title_index = FuzzyIndex[Path]()
         self._file_index = FuzzyIndex[Path]()
@@ -200,7 +235,7 @@ class DirectoryLibrary:
             and candidate.is_file()
             and candidate.suffix.lower() == ".pdf"
         ):
-            return LibraryMatch(title=candidate.name, source=candidate)
+            return self._match(candidate.name, candidate)
         if path.parent != Path("."):
             return None
         return self._lookup(path.name, self._files, self._file_index, use_stem=False)
@@ -215,10 +250,7 @@ class DirectoryLibrary:
     ) -> LibraryMatch | None:
         exact = exact_items.get(normalize_key(query))
         if exact is not None:
-            return LibraryMatch(
-                title=exact.stem if use_stem else exact.name,
-                source=exact,
-            )
+            return self._match(exact.stem if use_stem else exact.name, exact)
         if self.match == "exact":
             return None
 
@@ -226,15 +258,20 @@ class DirectoryLibrary:
         if not matches:
             return None
         result = matches[0]
-        return LibraryMatch(
-            title=result.item.stem if use_stem else result.item.name,
-            source=result.item,
-            score=result.score,
+        return self._match(
+            result.item.stem if use_stem else result.item.name, result.item, result.score
         )
 
     def display_path(self, path: Path) -> Path:
         """Path inside the library as discovered (through links)."""
         return self._display.get(path, path)
+
+    def view_of(self, path: Path) -> Path:
+        """A discovered file's path in the file-system view."""
+        return self.view_path / self.display_path(path)
+
+    def _match(self, title: str, path: Path, score: float | None = None) -> LibraryMatch:
+        return LibraryMatch(title=title, source=path, score=score, view=self.view_of(path))
 
     def select_parts(
         self,
@@ -297,9 +334,7 @@ class DirectoryLibrary:
                 )
             )
             path, cand, step = at_rank[0]
-            hits.append(
-                PartHit(part, step, cand.part, LibraryMatch(title=title, source=path))
-            )
+            hits.append(PartHit(part, step, cand.part, self._match(title, path)))
             if len(at_rank) > 1:
                 rest = tuple(p for p, _, _ in at_rank[1:])
                 others.setdefault((path, rest), []).append(part)
@@ -406,6 +441,7 @@ class IndexedPdfLibrary:
         match: MatchMode = "exact",
     ) -> None:
         self.index_path = index_path.resolve()
+        self.source_view = lexical_absolute(source)
         self.source = source.resolve()
         self.match = match
         self._tunes: dict[str, IndexedTune] = {}
@@ -439,20 +475,17 @@ class IndexedPdfLibrary:
                 f"Invalid indexed PDF library {resolved_index}: {error}"
             ) from error
 
-        resolved_source = source.resolve()
-        if not resolved_source.is_file():
+        if not source.resolve().is_file():
             raise ValueError(
-                f"Source PDF not found: {resolved_source} "
-                f"(configured for {resolved_index})"
+                f"Source PDF not found: {source} (configured for {index_path})"
             )
-        if resolved_source.suffix.lower() != ".pdf":
+        if source.suffix.lower() != ".pdf":
             raise ValueError(
-                f"Source must be a PDF: {resolved_source} "
-                f"(configured for {resolved_index})"
+                f"Source must be a PDF: {source} (configured for {index_path})"
             )
         return cls(
             resolved_index,
-            resolved_source,
+            source,
             tunes,
             shift=shift,
             match=match,
@@ -476,6 +509,7 @@ class IndexedPdfLibrary:
             page=tune.page + self._shift,
             length=tune.pages,
             score=score,
+            view=self.source_view,
         )
 
     def lookup_file(
@@ -485,8 +519,12 @@ class IndexedPdfLibrary:
 
 
 class LibraryCollection:
-    def __init__(self, libraries: list[Library] | None = None) -> None:
+    def __init__(
+        self, libraries: list[Library] | None = None, config_path: Path | None = None
+    ) -> None:
         self._libraries = list(libraries or [])
+        # Project configuration the collection was loaded from, if any.
+        self.config_path = config_path
 
     @property
     def directories(self) -> list[Path]:
@@ -564,7 +602,7 @@ class LibraryCollection:
                 out.extend(library.all_candidates(title))
             elif isinstance(library, DirectoryLibrary):
                 for path, cand in library.all_candidates(title):
-                    out.append((str(library.path), path, cand))
+                    out.append((str(library.view_of(path).parent), path, cand))
             else:
                 match = library.lookup_title(title)
                 if match is not None:
@@ -608,13 +646,11 @@ class LibraryRecord(BaseModel):
         )
 
     def load(self, base_dir: Path, _seen: tuple[Path, ...] = ()) -> Library:
-        path = Path(self.library)
-        if not path.is_absolute():
-            path = (base_dir / path).resolve()
-        else:
-            path = path.resolve()
+        """Load the record; relative paths join `base_dir` lexically, so a
+        path through a link stays in the file-system view."""
+        path = lexical_absolute(Path(self.library), base_dir)
         if path.suffix.lower() in (".yaml", ".yml") and path.is_file():
-            return self._load_collection(path, _seen)
+            return self._load_collection(path.resolve(), _seen)
         if path.is_dir():
             if "source" in self.model_fields_set:
                 raise ValueError(
@@ -626,9 +662,7 @@ class LibraryRecord(BaseModel):
         if path.suffix.lower() == ".json" and path.is_file():
             if self.source is None:
                 raise ValueError(f"Indexed PDF library {path} requires source")
-            source = Path(self.source)
-            if not source.is_absolute():
-                source = (base_dir / source).resolve()
+            source = lexical_absolute(Path(self.source), base_dir)
             shift = 0 if self.shift is None else self.shift
             return IndexedPdfLibrary.from_json(
                 path,
@@ -641,18 +675,14 @@ class LibraryRecord(BaseModel):
         )
 
 
-def find_project_config(
-    start_dir: Path, limit: int | None = PROJECT_CONFIG_PARENT_LIMIT
-) -> Path | None:
-    """Walk up lexically from start_dir looking for project config.
+def find_project_config(start_dir: Path) -> Path | None:
+    """Walk up lexically from start_dir to the root looking for project config.
 
     Checks `tunery.yaml` and `.tunery.yaml` in each directory. The first
-    directory holding one wins; holding both is an error. `limit` caps how
-    many parents to climb (None walks to the filesystem root). Symlinks in
-    intermediate components are not resolved.
+    directory holding one wins; holding both is an error. Symlinks are not
+    resolved, so the walk climbs back through links into the base hierarchy.
     """
-    directory = Path(os.path.normpath(str(start_dir)))
-    depth = 0
+    directory = lexical_absolute(start_dir)
     while True:
         plain = directory / PROJECT_CONFIG_NAMES[0]
         dotted = directory / PROJECT_CONFIG_NAMES[1]
@@ -667,60 +697,25 @@ def find_project_config(
             return plain
         if has_dotted:
             return dotted
-        if limit is not None and depth >= limit:
-            break
-        parent = directory.parent
-        if parent == directory:
-            break
-        directory = parent
-        depth += 1
-    return None
+        if directory.parent == directory:
+            return None
+        directory = directory.parent
 
 
-def _logical_cwd() -> Path:
-    """Working directory without resolving symlinks (see render.logical_cwd)."""
-    pwd = os.environ.get("PWD")
-    if pwd:
-        logical = Path(pwd)
-        try:
-            if logical.samefile("."):
-                return logical
-        except OSError:
-            pass
-    return Path.cwd()
-
-
-def _lexical_absolute(path: Path) -> Path:
-    if not path.is_absolute():
-        path = _logical_cwd() / path
-    return Path(os.path.normpath(str(path)))
-
-
-def load_library_records(
-    records: list[LibraryRecord], base_dir: Path
-) -> LibraryCollection:
-    return LibraryCollection([record.load(base_dir) for record in records])
-
-
-def load_project_libraries(
-    start_dir: Path | None = None, limit: int | None = PROJECT_CONFIG_PARENT_LIMIT
-) -> LibraryCollection:
-    if start_dir is None:
-        start = _logical_cwd()
-    else:
-        start = Path(start_dir)
-        if not start.is_absolute():
-            start = _lexical_absolute(start)
-    config_path = find_project_config(start, limit)
+def load_project_libraries(start_dir: Path | None = None) -> LibraryCollection:
+    """Libraries of the first project config found walking up from `start_dir`
+    (default: logical working directory); without one, `start_dir` itself."""
+    start = lexical_absolute(start_dir or logical_cwd())
+    config_path = find_project_config(start)
     if config_path is None:
         print("Project configuration was not found, using defaults")
         return LibraryCollection([DirectoryLibrary(start)])
-    # Dereference symlinks so relative library/source paths resolve to real files.
-    config_path = config_path.resolve()
-
+    # A symlinked config file resolves its paths against its real location;
+    # otherwise they join its directory in the file-system view.
+    base_dir = config_path.resolve().parent if config_path.is_symlink() else config_path.parent
     try:
         raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         records = [LibraryRecord.model_validate(item) for item in (raw_config or [])]
     except (OSError, yaml.YAMLError, ValidationError, TypeError) as error:
         raise ValueError(f"Invalid project configuration {config_path}: {error}") from error
-    return load_library_records(records, config_path.parent)
+    return LibraryCollection([record.load(base_dir) for record in records], config_path)

@@ -566,7 +566,7 @@ reads the real libraries.
   an unknown name in `--part` is a visible error.
 - [x] **LIB5.7** `--explicit-bookmark-hierarchy` prefixes part bookmarks with
   `_ `. Test: `_ Bass` under Mo' Better Blues.
-- **LIB5.8** File-system view (Concepts, Configuration):
+- [x] **LIB5.8** File-system view (Concepts, Configuration):
   - the base is `--base` or `$PWD`, and relative command-line paths join it;
   - discovery starts at the layout's directory and walks up lexically to
     the root, back through links;
