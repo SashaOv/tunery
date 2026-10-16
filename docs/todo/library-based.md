@@ -1016,7 +1016,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   - The test renders each book from its titles. It asserts:
     - 26-07-09 bass 15/15 and 26-08-07 bass 21/21 as the hand layouts;
     - 26-07-09 piano 15/15 as the index (Walking My Baby Back Home is pages
-      33–35, unlike the hand layout's 31–34);
+      31–35, unlike the hand layout's 31–34);
     - 26-09-12 bass 15/25, with `missing Bass` for the 10 titles without an
       entry.
 
@@ -1025,7 +1025,7 @@ converts `apps/SOJ/data/scores.json` into the index above. That gives 26
 entries; the 6 whose parts are all found by name are dropped, and `_path` is
 dropped. `file:` is kept for "I've Got You Under My Skin" and set to
 `Love Is Here To Stay.Low Key.Bb.pdf` for Love is Here to Stay. Walking My
-Baby Back Home's piano becomes `[33, 3]` (author, 2026-10-16: pages 33–35). The
+Baby Back Home's piano becomes `[31, 5]` (author, 2026-10-16: pages 31–35). The
 result goes to the scratchpad as `MasterList.tunery.yaml`, for the author to
 review and place in Drive. The executor writes nothing to Drive.
 
@@ -1040,8 +1040,8 @@ review and place in Drive. The executor writes nothing to Drive.
   - 26-07-09 bass and 26-08-07 bass: every chart's file and pages equal the
     hand layout's, and the books have 28 and 44 pages, like the existing
     `26-07-09.bass.pdf` and `26-08-07.bass.pdf`;
-  - 26-07-09 piano: 43 pages (the existing book has 44); only Walking My
-    Baby Back Home differs from the hand layout (pages 33–35, not 31–34);
+  - 26-07-09 piano: 45 pages (the existing book has 44); only Walking My
+    Baby Back Home differs from the hand layout (pages 31–35, not 31–34);
   - 26-09-12 bass: 15 titles as the hand layout, and `missing Bass` for the
     10 without an index entry;
   - `--test .` on the 26-08-07 layout lists each title's index part as a
