@@ -177,14 +177,17 @@ structure on top. `file:` layouts keep working unchanged.
   (`parts: {norm: Flute}`): it replaces the title's parts when rendering
   that book and is ignored elsewhere. Part keys apply in every book.
 - **Substitution chains:**
-  - Instrument N → Instrument → section → group → Concert.
-  - Piano → Rhythm → Concert.
-  - Guitar → Piano → Rhythm → Concert.
+  - Instrument N → Instrument → section → group → Concert rank → Melody →
+    Vocal.
+  - Piano → Rhythm → Concert rank → Melody → Vocal.
+  - Guitar → Piano → Rhythm → Concert rank → Melody → Vocal.
   - A Piano/Guitar score matches the Piano and the Guitar steps directly.
-  - Bass → Rhythm → Concert.
-  - Drums → Rhythm → Concert.
-  - The Concert step takes Concert or untagged, then Lead Sheet, then
-    Vocal/Melody, then other concert-group instruments.
+  - Bass → Rhythm → Concert rank → Melody → Vocal.
+  - Drums → Rhythm → Concert rank → Melody → Vocal.
+  - The Concert rank is Concert or untagged, then Lead Sheet, then a Rhythm
+    chart, in that step order. Concert books then fall back to Melody, then
+    Piano/Guitar (one rank), then Vocal. Flute no longer substitutes for
+    Concert.
   - The "Rhythm" step matches items tagged `Rhythm` or `Rhythm Section`.
 - **Combined parts:** each requested part resolves through its chain. If two
   parts resolve to the same file, it is included once. A part whose chain
@@ -204,8 +207,9 @@ structure on top. `file:` layouts keep working unchanged.
   belong to one arrangement.
 - **Ranks:** in a chain, an instrument and its key group are one rank: a
   Bb chart is as good as a Tenor Sax chart (likewise Alto Sax/Bari Sax and
-  Eb, Trombone and Bass Clef). Rhythm is not a key group, so Bass still
-  ranks above a Rhythm chart.
+  Eb, Trombone and Bass Clef). Concert, Lead Sheet and Rhythm charts are one
+  rank, as are Piano and Guitar charts. Rhythm is not a key group, so Bass
+  still ranks above a Rhythm chart.
 - **Sources:** within the winning library, each folder holding candidates
   for a title is a source. The title's top source has the most requested
   parts found at their own step, then the fewest extra words, then comes
@@ -801,7 +805,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   replaces the title's parts when rendering `norm` and leaves other books
   alone; part keys (`Tenor Sax: Horn 1`) apply in every book as today.
   Test: Funk in Deep Freeze is Flute in `norm` and Tenor in `full`.
-- **LIB6.4** Concert = Lead Sheet = untagged = a Rhythm chart: one rank, in
+- [x] **LIB6.4** Concert = Lead Sheet = untagged = a Rhythm chart: one rank, in
   that step order. Then Melody, then Piano/Guitar, then Vocal (author,
   2026-10-15). Flute no longer substitutes for Concert. For Piano, Guitar,
   Bass and Drums the Rhythm chart stays ahead of Concert. Requesting `Rhythm` still means Piano,

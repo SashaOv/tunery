@@ -61,7 +61,19 @@ _GROUPS: dict[str, str] = {
     "rs": "Rhythm",
 }
 
-_CONCERT_FALLBACK = ["Concert", "Lead Sheet", "Vocal", "Melody", "Flute"]
+# Concert, Lead Sheet, untagged items and Rhythm charts form one rank, in
+# that step order. Concert books then fall back to Melody, Piano/Guitar (one
+# rank) and Vocal; Flute no longer substitutes for Concert. Instrument parts
+# fall back through the concert rank to Melody and Vocal only.
+_CONCERT_RANK = ["Concert", "Lead Sheet", "Rhythm"]
+_CONCERT_REST = ["Melody", "Piano", "Guitar", "Vocal"]
+_FALLBACK_REST = ["Melody", "Vocal"]
+_CONCERT_FALLBACK = [*_CONCERT_RANK, *_CONCERT_REST]
+
+
+def _chain(*steps: str) -> list[str]:
+    """Substitution steps in order, first occurrence wins."""
+    return list(dict.fromkeys(steps))
 
 _INSTRUMENT_GROUPS: dict[str, str | None] = {
     canon: group for canon, _, group in _INSTRUMENTS
@@ -770,15 +782,15 @@ def chain_for_part(requested: str) -> list[str]:
     """Substitution chain for a requested part, earliest first."""
     part = canonical_part_name(requested)
     if part == "Piano":
-        return ["Piano", "Rhythm", *_CONCERT_FALLBACK]
+        return _chain("Piano", "Rhythm", *_CONCERT_RANK, *_FALLBACK_REST)
     if part == "Guitar":
-        return ["Guitar", "Piano", "Rhythm", *_CONCERT_FALLBACK]
+        return _chain("Guitar", "Piano", "Rhythm", *_CONCERT_RANK, *_FALLBACK_REST)
     if part == "Bass":
-        return ["Bass", "Rhythm", *_CONCERT_FALLBACK]
+        return _chain("Bass", "Rhythm", *_CONCERT_RANK, *_FALLBACK_REST)
     if part == "Drums":
-        return ["Drums", "Rhythm", *_CONCERT_FALLBACK]
+        return _chain("Drums", "Rhythm", *_CONCERT_RANK, *_FALLBACK_REST)
     if part == "Rhythm":
-        return ["Rhythm", *_CONCERT_FALLBACK]
+        return _chain("Rhythm", *_CONCERT_FALLBACK)
     if part in _CONCERT_FALLBACK:
         # Concert step with sub-order starting at requested kind.
         idx = _CONCERT_FALLBACK.index(part)
@@ -792,13 +804,13 @@ def chain_for_part(requested: str) -> list[str]:
         if group and group not in steps:
             # Rhythm group already covered? Keep single Rhythm entry.
             steps.append(group)
-        for fallback in _CONCERT_FALLBACK:
+        for fallback in [*_CONCERT_RANK, *_FALLBACK_REST]:
             if fallback not in steps:
                 steps.append(fallback)
         return steps
     # Group or unknown: direct then Concert fallback.
     steps = [part]
-    for fallback in _CONCERT_FALLBACK:
+    for fallback in [*_CONCERT_RANK, *_FALLBACK_REST]:
         if fallback not in steps:
             steps.append(fallback)
     return steps
@@ -811,11 +823,18 @@ def rank_chain(requested: str) -> list[list[str]]:
     """Substitution chain grouped into ranks, best first.
 
     A key group (Bb, Eb, Bass Clef, F) shares its instrument's rank: a Bb
-    chart is as good as a Tenor Sax chart. Every other step is its own rank.
+    chart is as good as a Tenor Sax chart. Concert, Lead Sheet and Rhythm
+    form one rank, as do Piano and Guitar. Every other step is its own rank.
     """
     ranks: list[list[str]] = []
     for step in chain_for_part(requested):
-        if ranks and step in KEY_GROUPS:
+        prev = ranks[-1][-1] if ranks and ranks[-1] else None
+        if ranks and (
+            step in KEY_GROUPS
+            or (step == "Lead Sheet" and prev == "Concert")
+            or (step == "Rhythm" and prev == "Lead Sheet")
+            or (step == "Guitar" and prev == "Piano")
+        ):
             ranks[-1].append(step)
         else:
             ranks.append([step])

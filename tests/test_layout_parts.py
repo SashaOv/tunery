@@ -123,14 +123,19 @@ def test_named_part_definition_unknown_member_is_an_error(tmp_path: Path) -> Non
         render(layout, tmp_path / "show.pdf", part=["full"])
 
 
-def test_known_aliases_pass(tmp_path: Path) -> None:
+def test_known_aliases_pass(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     layout = make_show(tmp_path, [{"title": "Funk In Deep Freeze"}])
 
     render(layout, tmp_path / "show.pdf", part=["Tenor"])
     assert (tmp_path / "show.Tenor Sax.pdf").exists()
 
+    # "rs" is a known name; with only Tenor and Flute charts every rhythm
+    # member misses (Flute no longer substitutes) and no book is written.
     render(layout, tmp_path / "show.pdf", part=["rs"])
-    assert (tmp_path / "show.RS.pdf").exists()
+    out = capsys.readouterr().out
+    assert 'missing Piano for "Funk In Deep Freeze"' in out
+    assert 'missing Drums for "Funk In Deep Freeze"' in out
+    assert not (tmp_path / "show.RS.pdf").exists()
 
 
 def test_named_book_mapping_applies_only_in_that_book(
