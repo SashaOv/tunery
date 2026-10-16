@@ -164,3 +164,29 @@ def test_fuzzy_title_keeps_part_from_stem(
     out = capsys.readouterr().out
     assert "lead-sheet-C_Major.pdf" in out
     assert "warning" not in out
+
+
+def test_part_bb_renders_bb_book(tmp_path: Path) -> None:
+    create_pdf(tmp_path / "library" / "Song.pdf", 2)
+    create_pdf(tmp_path / "library" / "Song.Bb.pdf", 3)
+    (tmp_path / "tunery.yaml").write_text("- library: library\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Song"}])
+
+    render(layout, tmp_path / "book.pdf", part="Bb")
+
+    bb_output = tmp_path / "book.Bb.pdf"
+    assert bb_output.exists()
+    with pikepdf.Pdf.open(bb_output) as pdf:
+        assert len(pdf.pages) == 3
+
+
+def test_default_concert_ignores_bb_chart(tmp_path: Path) -> None:
+    create_pdf(tmp_path / "library" / "Song.pdf", 2)
+    create_pdf(tmp_path / "library" / "Song.Bb.pdf", 3)
+    (tmp_path / "tunery.yaml").write_text("- library: library\n")
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Song"}])
+
+    render(layout, tmp_path / "book.pdf")
+
+    with pikepdf.Pdf.open(tmp_path / "book.pdf") as pdf:
+        assert len(pdf.pages) == 2

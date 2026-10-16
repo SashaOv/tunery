@@ -22,13 +22,6 @@ def render_command(
             help="Path to the output PDF file (default: <input_base>.pdf)",
         ),
     ] = None,
-    keys: Annotated[
-        list[str] | None,
-        Parameter(
-            ["--keys", "-k"],
-            help="Target key. C or omitted renders $stem.pdf; other keys render $stem.$key.pdf.",
-        ),
-    ] = None,
     base: Annotated[
         Path | None,
         Parameter(
@@ -73,7 +66,6 @@ def render_command(
     render(
         layout,
         output_path,
-        keys or [],
         base,
         part or None,
         level,

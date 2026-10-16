@@ -173,6 +173,46 @@ def _parse_key_token(token: str) -> str | None:
     return None
 
 
+def normalize_score_key(key: str) -> str:
+    """Canonicalize a chart `key:` value (`bb` -> `Bb`)."""
+    token = key.strip().replace("♯", "#").replace("♭", "b")
+    token = re.sub(r"\s+", "", token)
+    token = re.sub(r"(?i)(?<=[A-Ga-g])-?sharp", "#", token)
+    token = re.sub(r"(?i)(?<=[A-Ga-g])-?flat", "b", token)
+    if token.upper() == "CONCERT":
+        return "C"
+    upper = token.upper()
+    aliases = {
+        "C": "C",
+        "DB": "Db",
+        "C#": "C#",
+        "CSHARP": "C#",
+        "D": "D",
+        "EB": "Eb",
+        "D#": "D#",
+        "DSHARP": "D#",
+        "E": "E",
+        "F": "F",
+        "GB": "Gb",
+        "F#": "F#",
+        "FSHARP": "F#",
+        "G": "G",
+        "AB": "Ab",
+        "G#": "G#",
+        "GSHARP": "G#",
+        "A": "A",
+        "BB": "Bb",
+        "A#": "A#",
+        "ASHARP": "A#",
+        "B": "B",
+    }
+    if upper in aliases:
+        return aliases[upper]
+    raise ValueError(
+        f"Invalid key {key!r}. Use note names like Bb, Eb, F#, Gb, or F-sharp."
+    )
+
+
 @dataclass
 class InterpretedTags:
     parts: list[str]

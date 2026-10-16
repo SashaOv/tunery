@@ -232,8 +232,6 @@ structure on top. `file:` layouts keep working unchanged.
   `- Tenor Sax.v2`.
 - **Indexed PDF libraries** are concert-only sources: they answer any part
   request with the indexed pages, as today.
-- **Keys:** `-k K` selects part group `K` with no substitution (the keys
-  feature's semantics). Output naming is unchanged: `<stem>.<K>.pdf`.
 - **Output:** `--part P` other than Concert writes `<stem>.<P>.pdf`; a
   combined value writes `<stem>.<A>+<B>.pdf` (`RS` stays `<stem>.RS.pdf`).
   When `-o` already ends in `.<P>` or an alias of `P` (`.rs` for Rhythm),
@@ -256,7 +254,7 @@ structure on top. `file:` layouts keep working unchanged.
   `key: F`) keeps only candidates whose score key matches. A key given
   without a mode matches any mode. If no candidate in a library matches, use
   all its candidates and warn `no <key> version of "<title>"`. The layout's
-  `key` is the score key; `-k` is the instrument key.
+  `key` is the score key.
 - **Verbosity:**
   - default: found / not found per chart, source and candidate warnings,
     missing parts;
@@ -787,7 +785,7 @@ PDF, the chart each title would use and every substitution it took.
 Each patch updates the design sections it changes (Selection, Concepts,
 Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
 
-- **LIB6.1** Remove `-k`/`--keys`: `tunery/keys.py`, its tests, the
+- [x] **LIB6.1** Remove `-k`/`--keys`: `tunery/keys.py`, its tests, the
   `<Title>.<K>.pdf` suffix lookups in `DirectoryLibrary`, per-key output
   naming and `[Key]` prefixes. Retire `docs/todo/keys.md`. Tests: `-k` is
   rejected by the CLI; `--part Bb` still renders a Bb book.

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 import tunery.render
 from tunery import main as cli
 
@@ -10,14 +12,13 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
     def render(
         layout: Path,
         output: Path,
-        keys: list[str],
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
     ):
         calls.append(
-            (layout, output, keys, base, part, verbose, explicit_bookmark_hierarchy)
+            (layout, output, base, part, verbose, explicit_bookmark_hierarchy)
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -28,7 +29,6 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         (
             Path("setlists/favorites.yaml"),
             Path("setlists/favorites.pdf"),
-            [],
             None,
             None,
             0,
@@ -43,14 +43,13 @@ def test_render_command_accepts_options(monkeypatch) -> None:
     def render(
         layout: Path,
         output: Path,
-        keys: list[str],
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
     ):
         calls.append(
-            (layout, output, keys, base, part, verbose, explicit_bookmark_hierarchy)
+            (layout, output, base, part, verbose, explicit_bookmark_hierarchy)
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -61,10 +60,6 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "favorites.yaml",
             "-o",
             "book.pdf",
-            "-k",
-            "Bb",
-            "--keys",
-            "Eb,F",
             "--base",
             "proj",
             "--part",
@@ -82,13 +77,17 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         (
             Path("favorites.yaml"),
             Path("book.pdf"),
-            ["Bb", "Eb,F"],
             Path("proj"),
             ["Piano", "Bass,Piano"],
             1,
             True,
         )
     ]
+
+
+def test_render_command_rejects_removed_keys_option() -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["render", "favorites.yaml", "-k", "Bb"])
 
 
 def test_lookup_command_accepts_options(monkeypatch) -> None:

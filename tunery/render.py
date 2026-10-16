@@ -15,13 +15,6 @@ from pydantic import (
 )
 
 from tunery.composer import Composer
-from tunery.keys import (
-    CONCERT_KEY,
-    expand_keys,
-    is_concert,
-    keyed_filename,
-    output_path_for_key,
-)
 from tunery.library import (
     LibraryCollection,
     LibraryRecord,
@@ -223,18 +216,11 @@ class SuccessResult(ProcessEntryResult):
             return f'found    "{self.title}" in {location}'
 
 
-def display_title(
-    explicit: str | None, resolved: Path, key: str | None
-) -> str:
-    """Display title for an entry, without any key edition suffix."""
+def display_title(explicit: str | None, resolved: Path) -> str:
+    """Display title for an entry."""
     if explicit:
         return explicit
-    stem = resolved.stem
-    if key is not None:
-        suffix = f".{key}" if not is_concert(key) else ".Concert"
-        if stem.lower().endswith(suffix.lower()):
-            return stem[: -len(suffix)]
-    return stem
+    return resolved.stem
 
 
 def process_file_entry(
@@ -242,7 +228,6 @@ def process_file_entry(
     default_dir: Path,
     composer: Composer,
     libraries: LibraryCollection | None = None,
-    key: str = CONCERT_KEY,
     part: str | list[str] = "Concert",
     verbose: int = 0,
     part_prefix: str = "",
@@ -262,16 +247,6 @@ def process_file_entry(
     )
     if not subparts:
         subparts = ["Concert"]
-    # `file:` entries with explicit page selections address the named PDF
-    # directly and skip key edition handling; everything else resolves the
-    # per-key edition source.
-    lookup_key = (
-        key
-        if not (
-            entry.file and (entry.page is not None or entry.length is not None)
-        )
-        else None
-    )
     if entry.file:
         folder = resolve_path(entry.file, default_dir)
         if folder.is_dir():
@@ -286,30 +261,12 @@ def process_file_entry(
             )
         if folder.suffix.lower() != ".pdf" and not folder.exists():
             raise ValueError(f"Score folder not found: {folder}")
-        library_match = (
-            libraries.lookup_file(entry.file, lookup_key) if libraries else None
-        )
+        library_match = libraries.lookup_file(entry.file) if libraries else None
         if library_match is not None:
             input_pdf_path = library_match.source
         else:
-            keyed = (
-                keyed_filename(entry.file, lookup_key)
-                if lookup_key is not None
-                else None
-            )
-            if keyed is not None:
-                keyed_path = resolve_path(keyed, default_dir)
-                if keyed_path.is_file():
-                    input_pdf_path = keyed_path
-                elif lookup_key is not None and is_concert(lookup_key):
-                    input_pdf_path = resolve_path(entry.file, default_dir)
-                else:
-                    return NotFoundResult(
-                        title=entry.title or Path(entry.file).stem
-                    )
-            else:
-                input_pdf_path = resolve_path(entry.file, default_dir)
-        title = display_title(entry.title, input_pdf_path, lookup_key)
+            input_pdf_path = resolve_path(entry.file, default_dir)
+        title = display_title(entry.title, input_pdf_path)
         page = entry.page
         length = entry.length
         entry_page = composer.add(
@@ -330,30 +287,6 @@ def process_file_entry(
     if not entry.title:
         raise ValueError("Entry must have either 'file' or 'title'")
     title = entry.title
-    # Non-concert -k selects with no substitution (keys semantics).
-    if lookup_key is not None and not is_concert(lookup_key):
-        library_match = (
-            libraries.lookup_title(title, lookup_key) if libraries else None
-        )
-        if library_match is None:
-            return NotFoundResult(title=title)
-        input_pdf_path = library_match.source
-        page = entry.page if entry.page is not None else library_match.page
-        length = entry.length if entry.length is not None else library_match.length
-        if library_match.score is not None:
-            matched_title = library_match.title
-            score = library_match.score
-        entry_page = composer.add(
-            title=title, source=input_pdf_path, start=page, pages=length, notes=entry.notes
-        )
-        return SuccessResult(
-            title=title,
-            page=entry_page,
-            source_path=library_match.shown,
-            source_page=page,
-            matched_title=matched_title,
-            score=score,
-        )
     if libraries is None:
         return NotFoundResult(title=title)
     return select_and_add(title, entry, libraries, subparts, composer, verbose, part_prefix)
@@ -447,13 +380,11 @@ def process_items(
     default_dir: Path,
     composer: Composer,
     libraries: LibraryCollection,
-    key: str,
-    show_key: bool,
     part: str | list[str] = "Concert",
     verbose: int = 0,
     part_prefix: str = "",
 ) -> None:
-    """Process layout items recursively for one key edition."""
+    """Process layout items recursively for one setbook."""
     for item in items:
         if isinstance(item, SectionEntry):
             composer.start_section(item.section)
@@ -462,8 +393,6 @@ def process_items(
                 default_dir,
                 composer,
                 libraries,
-                key,
-                show_key,
                 part,
                 verbose,
                 part_prefix,
@@ -475,21 +404,16 @@ def process_items(
                 default_dir,
                 composer,
                 libraries,
-                key,
                 part,
                 verbose,
                 part_prefix,
             )
-            if show_key:
-                print(f"[{key}] {result.format()}")
-            else:
-                print(result.format())
+            print(result.format())
 
 
 def render(
     layout_path: Path,
     output: Path,
-    keys: list[str] | None = None,
     base: Path | None = None,
     part: str | list[str] | None = None,
     verbose: int = 0,
@@ -500,7 +424,7 @@ def render(
     Relative `layout_path` and `output` join `base` (default: the logical
     working directory); configuration is found from the layout's folder.
 
-    Renders one setbook per key edition and per --part option. `--part`
+    Renders one setbook per --part option. `--part`
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>+<B>.pdf`.
     """
@@ -529,8 +453,6 @@ def render(
         error_msg = f"Validation error in {layout_path}:\n{e}"
         raise ValueError(error_msg) from e
 
-    key_list = expand_keys(list(keys) if keys else [])
-
     libraries = load_project_libraries(layout_path.parent)
     if verbose >= 1:
         print(f"configuration {libraries.config_path or 'not found'}")
@@ -549,26 +471,21 @@ def render(
             layout_entries.append(record)
 
     default_dir = layout_path.parent
-    show_key = len(key_list) > 1
     part_specs = expand_part_specs(part, named_parts)
 
     for label, subparts in part_specs:
         part_output = output_path_for_label(output, label if label != "Concert" else None)
-        for key in key_list:
-            key_output = output_path_for_key(part_output, key)
-            with Composer(key_output, autosave=False) as composer:
-                process_items(
-                    layout_entries,
-                    default_dir,
-                    composer,
-                    libraries,
-                    key,
-                    show_key,
-                    subparts,
-                    verbose,
-                    PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
-                )
-                composer.save()
+        with Composer(part_output, autosave=False) as composer:
+            process_items(
+                layout_entries,
+                default_dir,
+                composer,
+                libraries,
+                subparts,
+                verbose,
+                PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
+            )
+            composer.save()
 
 
 def lookup_and_extract(

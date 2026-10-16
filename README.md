@@ -112,7 +112,7 @@ tunery lookup "Giant Steps"
   more than one folder. `-v` adds the configuration used and the chart and
   substitution for each part; `-vv` adds every candidate.
 - `--base DIR` resolves relative command-line paths against `DIR` instead of
-  the working directory. `-k KEY` renders per-key editions (`Song.Bb.pdf`).
+  the working directory.
 
 Run `tunery --help` for all options.
 
