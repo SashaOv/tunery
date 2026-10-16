@@ -1,0 +1,190 @@
+# Charts of the author's hand-made 26-09-15 books (file names per title),
+# from 26-09-15.rs.yaml, 26-09-15.norm.yaml and 26-09-15.yaml, keyed by the
+# layout's titles (the hand layouts say "Mo's Better Blues").
+rs:
+  Recado Bossa Nova:
+  - Recado Bossa Nova - Rhythm.pdf
+  Take Five:
+  - Take Five.pdf
+  Ceora:
+  - Ceora.pdf
+  The Cape Verdean Blues:
+  - The Cape Verdean Blues - rhythm.pdf
+  Batida Diferente:
+  - Batida Diferente.pdf
+  Mo' Better Blues:
+  - Mo Better Blues - Bass.pdf
+  - Mo Better Blues - Drums.pdf
+  - Mo Better Blues - Rhythm.pdf
+  I Love Lucy:
+  - I Love Lucy - Rhythm.pdf
+  Mercy, Mercy, Mercy:
+  - Mercy, Mercy, Mercy.pdf
+  Jeannine:
+  - Jeannine - rhythm.pdf
+  My Favorite Things:
+  - My Favorite Things.pdf
+  Creepin':
+  - Creepin.pdf
+  Norwegian Wood:
+  - Norwegian Wood - Bass.pdf
+  - Norwegian Wood - Drums.pdf
+  Slow Hot Wind:
+  - Slow Hot Wind.pdf
+  Jolene:
+  - Jolene - Rhythm.pdf
+  I Can't Help It:
+  - I Can't Help It - Bass.pdf
+  - I Can't Help It - Drums.pdf
+  - I Can't Help It - Piano.pdf
+  Shaker Song:
+  - Shaker Song - Concert.pdf
+  Funk in Deep Freeze:
+  - Funk In Deep Freeze - Rhythm Section.pdf
+  So What:
+  - SoWhat.pdf
+  Poinciana:
+  - Poinciana - bass.pdf
+  - Poinciana - concert.pdf
+  Bolivia:
+  - Bolivia.pdf
+  Comin' Home Baby:
+  - Comin' Home Baby - Rhythm.pdf
+  Red Clay:
+  - Red Clay - concert.pdf
+  The Chicken:
+  - The Chicken.pdf
+norm:
+  Recado Bossa Nova:
+  - Recado Bossa Nova -  Bb.pdf
+  Take Five:
+  - Take Five.Bb.pdf
+  Ceora:
+  - Ceora.Bb.pdf
+  The Cape Verdean Blues:
+  - The Cape Verdean Blues - tenor (horn 2).pdf
+  Batida Diferente:
+  - Batida Diferente.Bb.pdf
+  Mo' Better Blues:
+  - Mo Better Blues - Tenor Sax.pdf
+  I Love Lucy:
+  - I Love Lucy - Tenor Sax.v2.pdf
+  Mercy, Mercy, Mercy:
+  - Mercy Mercy Mercy.Bb Harmony.pdf
+  Jeannine:
+  - Jeannine - tenor.pdf
+  My Favorite Things:
+  - My Favorite Things.Lead.Bb.pdf
+  Creepin':
+  - Creepin.Bb.pdf
+  Norwegian Wood:
+  - Norwegian Wood - Horn 1.pdf
+  Slow Hot Wind:
+  - Slow Hot Wind.Bb.pdf
+  Jolene:
+  - Jolene - Tenor.pdf
+  I Can't Help It:
+  - I Can't Help It - Tenor.pdf
+  Shaker Song:
+  - Shaker Song - Tenor.pdf
+  Funk in Deep Freeze:
+  - Funk In Deep Freeze - Flute.pdf
+  So What:
+  - SoWhat.Bb.pdf
+  Poinciana:
+  - Poinciana.Bb.Emaj.pdf
+  Bolivia:
+  - Bolivia.Bb.pdf
+  Comin' Home Baby:
+  - Comin' Home Baby - Tenor Sax.pdf
+  Red Clay:
+  - Red Clay - Bb.pdf
+  The Chicken:
+  - The Chicken.Bb.pdf
+full:
+  Recado Bossa Nova:
+  - Recado Bossa Nova -  Bb.pdf
+  - Recado Bossa Nova - Rhythm.pdf
+  Take Five:
+  - Take Five.Bb.pdf
+  - Take Five.pdf
+  Ceora:
+  - Ceora.Bb.pdf
+  - Ceora.pdf
+  The Cape Verdean Blues:
+  - The Cape Verdean Blues - rhythm.pdf
+  - The Cape Verdean Blues - tenor (horn 2).pdf
+  Batida Diferente:
+  - Batida Diferente.Bb.pdf
+  - Batida Diferente.pdf
+  Mo' Better Blues:
+  - Mo Better Blues - Bass.pdf
+  - Mo Better Blues - Drums.pdf
+  - Mo Better Blues - Rhythm.pdf
+  - Mo Better Blues - Tenor Sax.pdf
+  - Mo Better Blues - Trumpet.pdf
+  I Love Lucy:
+  - I Love Lucy - Rhythm.pdf
+  - I Love Lucy - Tenor Sax.v2.pdf
+  - I Love Lucy - Trumpet.pdf
+  Mercy, Mercy, Mercy:
+  - Mercy Mercy Mercy.Bb Harmony.pdf
+  - Mercy, Mercy, Mercy.pdf
+  Jeannine:
+  - Jeannine - rhythm.pdf
+  - Jeannine - tenor.pdf
+  - Jeannine - trumpet.pdf
+  My Favorite Things:
+  - My Favorite Things.Lead.Bb.pdf
+  - My Favorite Things.pdf
+  Creepin':
+  - Creepin.Bb.pdf
+  - Creepin.pdf
+  Norwegian Wood:
+  - Norwegian Wood - Bass.pdf
+  - Norwegian Wood - Drums.pdf
+  - Norwegian Wood - Horn 1.pdf
+  - Norwegian Wood - Horn 2.pdf
+  - Norwegian Wood - Piano:Guitar.pdf
+  Slow Hot Wind:
+  - Slow Hot Wind.Bb.pdf
+  - Slow Hot Wind.pdf
+  Jolene:
+  - Jolene - Rhythm.pdf
+  - Jolene - Tenor.pdf
+  - Jolene - Trumpet.pdf
+  I Can't Help It:
+  - I Can't Help It - Bass.pdf
+  - I Can't Help It - Drums.pdf
+  - I Can't Help It - Piano.pdf
+  - I Can't Help It - Tenor.pdf
+  - I Can't Help It - Trumpet.pdf
+  Shaker Song:
+  - Shaker Song - Concert.pdf
+  - Shaker Song - Tenor.pdf
+  - Shaker Song- Trumpet.pdf
+  Funk in Deep Freeze:
+  - Funk In Deep Freeze - Flute.pdf
+  - Funk In Deep Freeze - Rhythm Section.pdf
+  - Funk In Deep Freeze - Tenor.pdf
+  - Funk In Deep Freeze - Trumpet.pdf
+  So What:
+  - SoWhat.Bb.pdf
+  - SoWhat.pdf
+  Poinciana:
+  - Poinciana - bass.pdf
+  - Poinciana - concert.pdf
+  - Poinciana.Bb.Emaj.pdf
+  Bolivia:
+  - Bolivia.Bb.pdf
+  - Bolivia.pdf
+  Comin' Home Baby:
+  - Comin' Home Baby - Rhythm.pdf
+  - Comin' Home Baby - Tenor Sax.pdf
+  - Comin' Home Baby - Trumpet.pdf
+  Red Clay:
+  - Red Clay - Bb.pdf
+  - Red Clay - concert.pdf
+  The Chicken:
+  - The Chicken.Bb.pdf
+  - The Chicken.pdf

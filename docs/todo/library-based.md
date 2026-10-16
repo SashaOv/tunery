@@ -587,7 +587,10 @@ reads the real libraries.
   title's parts among the PDFs in it. Tests: a folder whose names don't
   match the title gives the right part; a missing folder is a visible error
   naming the path.
-- **LIB5.11** Crosswinds 26-09-15 test case.
+- [x] **LIB5.11** Crosswinds 26-09-15 test case. As built: data in
+  `tests/data/` (library names, the author's layout plus the planned Funk
+  mapping, and the hand books' charts). The test records each designed
+  difference, and asserts the `Bb Parts` choices are warned.
   - `tests/data/crosswinds-26-09-15.txt` lists, relative to SheetMusic,
     every PDF whose folder or name matches one of the 23 titles: names only,
     taken once from the author's drive.

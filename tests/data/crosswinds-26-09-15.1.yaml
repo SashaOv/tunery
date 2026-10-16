@@ -1,0 +1,42 @@
+# The author's 26-09-15.1.yaml (2026-10-15), plus the planned
+# Funk in Deep Freeze mapping {Tenor Sax: Flute}.
+- config:
+  - parts:
+      full: Concert, Trumpet, Tenor Sax, Rhythm
+      norm: Tenor Sax
+- section: ___Set1___
+  body:
+  - title: Recado Bossa Nova
+  - title: Take Five
+  - title: Ceora
+  - title: The Cape Verdean Blues
+  - title: Batida Diferente
+  - title: Mo' Better Blues
+  - title: I Love Lucy
+    tags: v2
+  - title: Mercy, Mercy, Mercy
+- section: ___Set2___
+  body:
+  - title: Jeannine
+  - title: My Favorite Things
+  - title: Creepin'
+  - title: Norwegian Wood
+    key: F
+    parts:
+      Tenor Sax: Horn 1
+      Trumpet: Horn 2
+  - title: Slow Hot Wind
+  - title: Jolene
+  - title: I Can't Help It
+  - title: Shaker Song
+- section: ___Set3___
+  body:
+  - title: Funk in Deep Freeze
+    part:
+      Tenor Sax: Flute
+  - title: So What
+  - title: Poinciana
+  - title: Bolivia
+  - title: Comin' Home Baby
+  - title: Red Clay
+  - title: The Chicken
