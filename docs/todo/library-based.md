@@ -944,7 +944,7 @@ Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs: scratchpad
 
 ### LIB7: SOJ per-instrument books from a title-only setlist
 
-Status: planned, approved 2026-10-16
+Status: executed, pending author verification
 
 **Improvement:** a big-band setlist of titles alone renders the bass or piano
 book. Page ranges come from an index inside the library definition
@@ -1066,6 +1066,42 @@ review and place in Drive. The executor writes nothing to Drive.
 - *Live regression:* the LIB6 Crosswinds and JBM `--test .` runs give the
   same picks (combo libraries).
 - *Open if not observed:* name each clause not run, with what it takes.
+
+**Acceptance run 2026-10-16** on tree `36ccefa` (amended once, unpushed:
+the LIB7.4 commit also carries the `bass clef` fix below, found during this
+run). Environment: Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2.
+Logs: scratchpad `acceptance-LIB7/`.
+
+- Gate: `uv run ruff check tunery tests build.py` clean; `uv run pytest -q`
+  184 passed.
+- Live, from `/Users/sasha/personal/wip/apps/SOJ/cache`, with a scratchpad
+  copy of the converted index (absolute `GDrive/MasterList`) and per-book
+  scratchpad layouts of the hand layouts' titles and sections:
+  - 26-07-09 bass: every chart's file and pages equal the hand layout's
+    except Sweet Home Chicago (`no jumbo file`, missing:
+    `Sweet Home Chicago-Clark.pdf` is not in the cached MasterList);
+    26 pages vs the hand 28, the gap exactly the missing chart;
+  - 26-07-09 piano: same, plus Walking My Baby Back Home at pages 31–35
+    (5, unlike the hand 31–34); 42 pages explained the same way;
+  - 26-08-07 bass: Mack the Knife takes `Mack The Knife bss.pdf` (with the
+    fix below); Sweet Home Chicago missing as above; otherwise file and
+    pages equal; 42 pages vs the hand 44, the gap exactly the missing chart;
+  - 26-09-12 bass: 15 titles as the hand layout, `missing Bass` for 9
+    titles without an entry, and `not found "I'm Gonna Sit Right Down"`
+    (the layout title is a prefix of the file with free-tag remainder,
+    a case for sibling-prefix grouping in the backlog);
+  - `--test .` on the 26-08-07 layout lists each title's index part as a
+    candidate (`index entry` rule).
+- Live regression: LIB6 Crosswinds `--test . --part rs` (23 found) and JBM
+  `--part Rhythm --test .` (15 Vault / 6 books, plus the typo) give the
+  same picks.
+- Fix found by acceptance (in `36ccefa`, noted here rather than left
+  uncommitted since the build was still open and unpushed): `Mack Bass Clef
+  Solo.pdf` parsed as Bass + free `clef`, tied the real `bss` part and won
+  on path order. `bass clef` is now a group phrase, so the solo feature
+  reads Bass Clef (unselectable in big band) and the bss part wins with no
+  warning. Gate stays green with it. In combo the same file now reads Bass
+  Clef instead of Bass; no test pinned the old reading.
 
 **Author action required at completion:**
 
