@@ -775,7 +775,7 @@ macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
 
 ### LIB6: Every lookup visible and checkable before rendering
 
-Status: planned, approved 2026-10-15
+Status: executed, pending author verification
 
 **Improvement:** `tunery render gig.yaml --test .` shows, without writing a
 PDF, the chart each title would use and every substitution it took.
@@ -856,6 +856,36 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   `tunery render GDrive/Shows/26-10-21/26-10-21.yaml --part Rhythm --test .`
   gives the LIB4 picks (22 titles); `-k Bb` is rejected.
 - *Open if not observed:* name each clause not run, with what it takes.
+
+**Acceptance run 2026-10-16** on tree `ee2cb34` (clean). Environment:
+Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs: scratchpad
+`acceptance-LIB6/` (`lib6-concert/norm/full/rs/poinciana/jbm.log`).
+
+- Gate: `uv run ruff check tunery tests build.py` clean; `uv run pytest -q`
+  170 passed. The LIB5 Crosswinds test needed no updates for LIB6.3/6.4.
+- Live Crosswinds, from `/Users/sasha/personal/crosswinds`, exit 0, no PDF
+  written in any `--test` run:
+  - concert `--test .`: Recado takes `- Rhythm` over the real book;
+    Poinciana takes `_Petes`' concert chart; substitutions warned per title
+    (e.g. `Bolivia: Trumpet, Tenor Sax → Bb`, `Poinciana: Trumpet, Tenor
+    Sax, Piano, Guitar, Drums → Concert`); every pick lists candidates
+    and rules.
+  - norm: 22/23 match `26-09-15.norm.yaml`. The hand `Mo's Better Blues`
+    is the layout's `Mo' Better Blues` (spelling) and matches its Tenor
+    Sax chart. Poinciana differs: the hand `Bb.Emaj` is archived with
+    `SheetMusic/Poinciana`, so Tenor Sax takes `_Petes`' concert chart
+    (warned as a substitution).
+  - full: Cape Verdean adds `.Bb` and `.pdf` (warned, multi-folder);
+    Funk has no Flute (Concert is the Rhythm Section chart, LIB6.4);
+    Poinciana has no `Bb.Emaj` (archived), Trumpet and Tenor take the
+    `_Petes` concert chart (warned as substitutions).
+  - rs: hand file set 29/29 picked, plus Norwegian Wood's Piano:Guitar,
+    as designed.
+  - `--test Poinciana` prints only Poinciana.
+- Live regression: JBM `--part Rhythm --test .` gives the LIB4 picks (21
+  found under Vault (15) and books (6), plus the `It Don't Mean Thing`
+  typo); `-k Bb` is rejected as an unknown option.
+- No code fixes were needed; nothing is left uncommitted.
 
 **Author action required at completion:**
 
