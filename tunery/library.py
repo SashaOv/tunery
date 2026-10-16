@@ -1,6 +1,6 @@
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -9,13 +9,16 @@ from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.parts import (
+    BIG_BAND_DEFAULT_PART,
     LibraryType,
     TitleCandidate,
     chain_for_part,
     fuzzy_title_prefix,
+    interpret_filename,
     match_candidate,
     normalize_score_key,
     normalize_text,
+    parse_part_name,
     rank_chain,
     stem_candidate,
 )
@@ -25,6 +28,32 @@ PROJECT_CONFIG_NAME = "tunery.yaml"
 PROJECT_CONFIG_NAMES = ("tunery.yaml", ".tunery.yaml")
 
 
+class LibraryIndexEntry(BaseModel):
+    """One part-index entry: page ranges of a title's parts inside its file."""
+
+    title: str
+    file: str | None = None
+    parts: dict[
+        str,
+        PositiveInt | tuple[PositiveInt, PositiveInt] | list[tuple[PositiveInt, PositiveInt]],
+    ]
+
+
+def _index_ranges(
+    value: PositiveInt | tuple[PositiveInt, PositiveInt] | list[tuple[PositiveInt, PositiveInt]],
+) -> list[tuple[int, int]]:
+    """One part value as [(page, length)]: `15`, `[17, 3]` or `[[26, 1]]`."""
+    if isinstance(value, int):
+        return [(value, 1)]
+    if (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and all(isinstance(v, int) for v in value)
+    ):
+        return [(int(value[0]), int(value[1]))]
+    return [(int(page), int(length)) for page, length in value]
+
+
 @dataclass(frozen=True)
 class LibraryMatch:
     title: str
@@ -32,6 +61,9 @@ class LibraryMatch:
     page: int | None = None
     length: int | None = None
     score: float | None = None
+    # All page ranges of an index part, in list order (LIB7.3 renders them
+    # all; page/length carry the first for now).
+    ranges: list[tuple[int, int]] | None = None
     # `source` as reached through links (file-system view), for messages.
     view: Path | None = None
 
@@ -95,13 +127,19 @@ class Library(Protocol):
 
 class DirectoryLibrary:
     def __init__(
-        self, path: Path, *, match: MatchMode = "exact", library_type: LibraryType = "combo"
+        self,
+        path: Path,
+        *,
+        match: MatchMode = "exact",
+        library_type: LibraryType = "combo",
+        index: list[LibraryIndexEntry] | None = None,
     ) -> None:
         # `path` as given is the library's place in the file-system view.
         self.view_path = lexical_absolute(path)
         self.path = path.resolve()
         self.match = match
         self.library_type = library_type
+        self.index = list(index or [])
         if not self.path.is_dir():
             raise ValueError(f"Library directory not found: {self.view_path}")
 
@@ -263,9 +301,11 @@ class DirectoryLibrary:
         candidates for a part, or charts from more than one folder.
         """
         cands = self.all_candidates(title)
+        indexed, index_warnings = self.index_candidates(title, cands)
+        cands = [*cands, *indexed]
+        warnings: list[str] = [*index_warnings]
         if not cands:
-            return None
-        warnings: list[str] = []
+            return None if not warnings else TitleSelection([], list(parts), warnings)
         if score_key is not None:
             try:
                 wanted = normalize_score_key(score_key)
@@ -310,7 +350,12 @@ class DirectoryLibrary:
                 )
             )
             path, cand, step = at_rank[0]
-            hits.append(PartHit(part, step, cand.part, self._match(title, path)))
+            match = self._match(title, path)
+            if cand.page is not None:
+                match = replace(
+                    match, page=cand.page, length=cand.length, ranges=cand.ranges
+                )
+            hits.append(PartHit(part, step, cand.part, match))
             if len(at_rank) > 1:
                 rest = tuple(p for p, _, _ in at_rank[1:])
                 others.setdefault((path, rest), []).append(part)
@@ -327,6 +372,67 @@ class DirectoryLibrary:
         if lines:
             warnings.append("\n".join([f'warning "{title}":', *lines]))
         return TitleSelection(hits, missing, warnings)
+
+    def index_candidates(
+        self, title: str, cands: list[tuple[Path, TitleCandidate]]
+    ) -> tuple[list[tuple[Path, TitleCandidate]], list[str]]:
+        """Part-index entries naming `title` as candidates plus warnings.
+
+        Each entry resolves its file (explicit `file:`, else the title's
+        jumbo file) and contributes one candidate per part at that part's
+        own step. An entry whose title finds no jumbo file, or several
+        without `file:`, warns and counts its parts as missing.
+        """
+        pairs: list[tuple[Path, TitleCandidate]] = []
+        warnings: list[str] = []
+        for entry in self.index:
+            if normalize_key(entry.title) != normalize_key(title):
+                continue
+            if entry.file is not None:
+                raw = Path(entry.file)
+                resolved = raw if raw.is_absolute() else self.path / raw
+                if not (resolved.is_file() and resolved.suffix.lower() == ".pdf"):
+                    raise ValueError(
+                        f'Index file not found for "{title}": {entry.file}'
+                    )
+                source = resolved.resolve()
+                base = interpret_filename(source.stem)
+            else:
+                jumbos = sorted(
+                    {str(p) for p, c in cands if c.part == BIG_BAND_DEFAULT_PART},
+                ) if self.library_type == "big band" else []
+                if len(jumbos) != 1:
+                    warnings.append(
+                        f'no jumbo file for "{title}"'
+                        if not jumbos
+                        else f'several jumbo files for "{title}": '
+                        + ", ".join(Path(p).name for p in jumbos)
+                    )
+                    continue
+                source = Path(jumbos[0])
+                base = next(c for p, c in cands if str(p) == jumbos[0])
+            for name, value in entry.parts.items():
+                part = parse_part_name(name, title)
+                ranges = _index_ranges(value)
+                pairs.append(
+                    (
+                        source,
+                        TitleCandidate(
+                            remainder="",
+                            parts=[part],
+                            part=part,
+                            score_key=base.score_key,
+                            variations=list(base.variations),
+                            free_tags=list(base.free_tags),
+                            rules_fired=[*base.rules_fired, "index entry"],
+                            noise=list(base.noise),
+                            page=ranges[0][0],
+                            length=ranges[0][1],
+                            ranges=ranges,
+                        ),
+                    )
+                )
+        return pairs, warnings
 
     def all_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
         """All title-matching candidates with interpretation, path order.
@@ -591,7 +697,9 @@ class LibraryCollection:
             if isinstance(library, LibraryCollection):
                 out.extend(library.all_candidates(title))
             elif isinstance(library, DirectoryLibrary):
-                for path, cand in library.all_candidates(title):
+                named = library.all_candidates(title)
+                indexed, _ = library.index_candidates(title, named)
+                for path, cand in [*named, *indexed]:
                     out.append((str(library.view_of(path).parent), path, cand))
             else:
                 match = library.lookup_title(title)
@@ -606,6 +714,7 @@ class LibraryRecord(BaseModel):
     shift: int | None = None
     match: MatchMode = "exact"
     type: LibraryType = "combo"
+    index: list[LibraryIndexEntry] | None = None
 
     def _load_collection(self, path: Path, seen: tuple[Path, ...]) -> Library:
         if "source" in self.model_fields_set:
@@ -661,7 +770,9 @@ class LibraryRecord(BaseModel):
                 )
             if "shift" in self.model_fields_set:
                 raise ValueError(f"Directory library {path} must not specify shift")
-            return DirectoryLibrary(path, match=self.match, library_type=self.type)
+            return DirectoryLibrary(
+                path, match=self.match, library_type=self.type, index=self.index
+            )
         if path.suffix.lower() == ".json" and path.is_file():
             if self.source is None:
                 raise ValueError(f"Indexed PDF library {path} requires source")

@@ -764,6 +764,10 @@ class TitleCandidate:
     # False for big-band jumbo and combined-set scores: listed, but no
     # substitution chain ever reaches them.
     selectable: bool = True
+    # Set for part-index entries: pages of the part inside its file.
+    page: int | None = None
+    length: int | None = None
+    ranges: list[tuple[int, int]] | None = None
 
     @property
     def tag_count(self) -> int:
@@ -774,6 +778,13 @@ class TitleCandidate:
             + len(self.free_tags)
             + len(self.noise)
         )
+
+
+def interpret_filename(stem: str) -> InterpretedTags:
+    """A filename read whole as tags, however its name reads (explicit index
+    `file:`): variations, free tags and score key come from the name, while
+    the parts come from the index entry."""
+    return interpret_remainder(clean_stem(stem))
 
 
 def match_candidate(

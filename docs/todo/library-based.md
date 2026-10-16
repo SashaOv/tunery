@@ -58,6 +58,11 @@ structure on top. `file:` layouts keep working unchanged.
   and gain `type` (`combo`, the default, or `big band`). A collection
   reference passes `type` on like `match`. Forced per-item metadata in the
   record overrides everything derived from names (backlog).
+- **Part index** (big band): a record's `index:` lists `{title, file?,
+  parts}` entries; part values are `page`, `[page, length]` or a list of
+  ranges. Each entry resolves its file (explicit `file:`, else the title's
+  jumbo file) and contributes one candidate per part at that part's own
+  step.
 - Libraries are searched last to first (later records win), unchanged.
 
 ## Discovery
@@ -980,7 +985,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   - `Hay Burner-Nestico/Conductor.pdf` is Conductor and never answers
     `--part Piano`;
   - in a combo library the same file stays Concert.
-- **LIB7.2** Part index in the library definition (author, 2026-10-16):
+- [x] **LIB7.2** Part index in the library definition (author, 2026-10-16):
   ```yaml
   # GDrive/MasterList/tunery.yaml, included by GDrive/tunery.yaml
   - library: ./
