@@ -7,10 +7,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Literal
 
 from rapidfuzz import fuzz
 
 COMBO_DEFAULT_PART = "Concert"
+BIG_BAND_DEFAULT_PART = "Score"
+
+LibraryType = Literal["combo", "big band"]
 
 # Instrument canonical -> (aliases, group). Aliases in normalized space form.
 _INSTRUMENTS: list[tuple[str, list[str], str | None]] = [
@@ -235,6 +239,14 @@ class InterpretedTags:
     free_tags: list[str] = field(default_factory=list)
     rules_fired: list[str] = field(default_factory=list)
     noise: list[str] = field(default_factory=list)
+    # False for big-band jumbo and combined-set scores: listed, but no
+    # substitution chain ever reaches them.
+    selectable: bool = True
+
+
+# Big-band conductor scores: every part in sequence in one file, named for
+# no single instrument.
+_CONDUCTOR_NAMES = {"conductor", "score", "condensed score"}
 
 
 def _tokenize_tag_text(tag_text: str) -> list[str]:
@@ -245,8 +257,15 @@ def _tokenize_tag_text(tag_text: str) -> list[str]:
     return [t for t in norm.split(" ") if t]
 
 
-def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTags:
-    """Interpret tag text right to left, longest span wins, combo profile."""
+def interpret_remainder(
+    tag_text: str, allow_dual: bool = True, library_type: str = "combo"
+) -> InterpretedTags:
+    """Interpret tag text right to left, longest span wins.
+
+    Combo is the default profile. In a big-band library a conductor score
+    (`conductor`, `score`, `condensed score`) is a part of its own, and an
+    untagged remainder defaults to the full score instead of Concert.
+    """
     tokens = _tokenize_tag_text(tag_text)
     n = len(tokens)
     consumed = [False] * n
@@ -254,6 +273,7 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
     score_key: str | None = None
     score_mode: str | None = None
     instruments_found: list[tuple[int, str, str | None]] = []  # index, canon, role?
+    conductors_found: list[int] = []
     groups_found: list[tuple[int, str]] = []
     kinds_found: list[tuple[int, str]] = []
     versions: list[str] = []
@@ -379,6 +399,18 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
                     consumed[k] = True
                 matched = True
                 break
+            # Conductor score two-word (big band only)
+            if (
+                library_type == "big band"
+                and span == 2
+                and phrase == "condensed score"
+            ):
+                conductors_found.append(start)
+                rules_fired.append(f"conductor: {phrase}")
+                for k in range(start, i + 1):
+                    consumed[k] = True
+                matched = True
+                break
         if matched:
             i -= 1
             continue
@@ -399,6 +431,14 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         if tok in _GROUPS:
             groups_found.append((i, _GROUPS[tok]))
             rules_fired.append(f"group: {tok}")
+            consumed[i] = True
+            i -= 1
+            continue
+        # Conductor score (big band only): a part of its own, never
+        # substituted for another part.
+        if library_type == "big band" and tok in ("conductor", "score"):
+            conductors_found.append(i)
+            rules_fired.append(f"conductor: {tok}")
             consumed[i] = True
             i -= 1
             continue
@@ -459,6 +499,7 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
     noise = [tokens[k] for k in sorted(noise_positions) if k - 1 not in roles]
 
     # Part determination.
+    defaulted = False
     if dual:
         parts = dual
         part = "/".join(dual)
@@ -482,6 +523,10 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
             part = f"{player} {player_role}" if player_role else player
             parts = [part, f"Horn {role}"]
             variations_out = [c.lower() for _, c, _ in instruments_found[:-2]]
+    elif library_type == "big band" and conductors_found:
+        part = "Conductor"
+        parts = [part]
+        variations_out = []
     elif groups_found:
         groups_found.sort(key=lambda x: x[0])
         part = groups_found[-1][1]
@@ -493,7 +538,8 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         parts = [part]
         variations_out = []
     else:
-        part = COMBO_DEFAULT_PART
+        defaulted = True
+        part = BIG_BAND_DEFAULT_PART if library_type == "big band" else COMBO_DEFAULT_PART
         parts = [part]
         variations_out = []
 
@@ -518,6 +564,10 @@ def interpret_remainder(tag_text: str, allow_dual: bool = True) -> InterpretedTa
         free_tags=free_tags,
         rules_fired=rules_fired,
         noise=noise,
+        selectable=not (
+            library_type == "big band"
+            and (defaulted or part in _GROUPS.values())
+        ),
     )
 
 
@@ -711,6 +761,9 @@ class TitleCandidate:
     free_tags: list[str] = field(default_factory=list)
     rules_fired: list[str] = field(default_factory=list)
     noise: list[str] = field(default_factory=list)
+    # False for big-band jumbo and combined-set scores: listed, but no
+    # substitution chain ever reaches them.
+    selectable: bool = True
 
     @property
     def tag_count(self) -> int:
@@ -723,7 +776,12 @@ class TitleCandidate:
         )
 
 
-def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCandidate | None:
+def match_candidate(
+    title: str,
+    stem: str,
+    folder: str | None = None,
+    library_type: str = "combo",
+) -> TitleCandidate | None:
     """Match layout title against stem or folder, interpreting remainder tags.
 
     Hard-boundary remainders accept free tags as variations; soft-boundary
@@ -733,7 +791,9 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
     stem_hit = match_prefix_boundary(title, stem)
     if stem_hit is not None:
         stem_remainder, is_hard, has_parens = stem_hit
-        interp = interpret_remainder(stem_remainder, allow_dual=not has_parens)
+        interp = interpret_remainder(
+            stem_remainder, allow_dual=not has_parens, library_type=library_type
+        )
         if not (interp.free_tags and not is_hard):
             score_key = interp.score_key or _folder_score_key(folder)
             return TitleCandidate(
@@ -745,6 +805,7 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
                 free_tags=interp.free_tags,
                 rules_fired=interp.rules_fired,
                 noise=copy_noise + interp.noise,
+                selectable=interp.selectable,
             )
         # Soft-boundary remainder with free tags: not this title via the stem
         # (e.g. "Mack_The_Knife__Bobby_Darin Score-Piano" slug words). Fall
@@ -753,19 +814,28 @@ def match_candidate(title: str, stem: str, folder: str | None = None) -> TitleCa
         folder_hit = match_prefix_boundary(title, folder)
         if folder_hit is not None:
             folder_remainder, folder_hard, folder_parens = folder_hit
-            folder_interp = interpret_remainder(folder_remainder, allow_dual=not folder_parens)
+            folder_interp = interpret_remainder(
+                folder_remainder,
+                allow_dual=not folder_parens,
+                library_type=library_type,
+            )
             if folder_interp.free_tags and not folder_hard:
                 return None
-            return stem_candidate(stem, folder, folder_interp.score_key)
+            return stem_candidate(
+                stem, folder, folder_interp.score_key, library_type
+            )
     return None
 
 
 def stem_candidate(
-    stem: str, folder: str | None = None, folder_key: str | None = None
+    stem: str,
+    folder: str | None = None,
+    folder_key: str | None = None,
+    library_type: str = "combo",
 ) -> TitleCandidate:
     """A file whose title is known from its folder: the whole stem is read
     as tags, and words no rule takes are ignored."""
-    interp = interpret_remainder(clean_stem(stem))
+    interp = interpret_remainder(clean_stem(stem), library_type=library_type)
     return TitleCandidate(
         remainder=clean_stem(stem),
         parts=interp.parts,
@@ -775,6 +845,7 @@ def stem_candidate(
         free_tags=[],
         rules_fired=interp.rules_fired,
         noise=(["copy of"] if _COPY_PREFIX.match(stem.strip()) else []) + interp.noise,
+        selectable=interp.selectable,
     )
 
 

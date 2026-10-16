@@ -55,8 +55,9 @@ structure on top. `file:` layouts keep working unchanged.
   against its real location (unchanged). A collection file reached through a
   linked folder stays in the file-system view, like a project config.
 - Library records keep their fields (`library`, `source`, `shift`, `match`)
-  and gain `type`. Forced per-item metadata in the record overrides
-  everything derived from names (backlog).
+  and gain `type` (`combo`, the default, or `big band`). A collection
+  reference passes `type` on like `match`. Forced per-item metadata in the
+  record overrides everything derived from names (backlog).
 - Libraries are searched last to first (later records win), unchanged.
 
 ## Discovery
@@ -129,9 +130,19 @@ structure on top. `file:` layouts keep working unchanged.
   score both instruments read. The item has both parts, Piano and Guitar. A
   multi-word instrument (`Bass Clarinet`) is not a dual, and an instrument
   in parentheses is a variation, not half of a dual.
+- **Score formats** (big band): a file can hold one part (`Hay
+  Burner-Nestico/Bass.pdf`, found by name as today), every part in sequence
+  (**jumbo**, named for no part: `Bandstand Boogie-Lowden.pdf`), or a few
+  related parts in sequence (**combined set**, named for their group:
+  `Rhythm Parts.pdf`). A jumbo or combined-set file is never reached by a
+  substitution chain, so it never stands in for a part. A conductor score
+  (`conductor`, `score`, `condensed score`) is a part of its own
+  (`Conductor`): recognized and listed, never substituted for another part.
+  An arranger needs no rule: `-Lowden` is a free tag.
 - **Part of an item:** the rightmost instrument (+ role), or both instruments
   of a dual-instrument score. If there is none, the group, then the kind,
-  then the library's default part. An earlier, unrelated instrument is a
+  then the library's default part (Concert lead sheet for combo, full score
+  for big band). An earlier, unrelated instrument is a
   variation (`All of Me (Vocal)-Piano` → Piano, variation "vocal"). A role
   in parentheses right after an instrument is the role that instrument
   plays: `tenor (horn 2)` is Tenor Sax as Horn 2, matching both. A score
@@ -940,7 +951,7 @@ in for a missing part; the part is reported missing instead.
 Each patch updates the design sections it changes and adds tests (blank
 PDFs under `tmp_path`, names copied from the libraries).
 
-- **LIB7.1** Library `type: combo | big band` on library records (a
+- [x] **LIB7.1** Library `type: combo | big band` on library records (a
   collection reference passes it on like `match`).
   - A big-band library holds the score formats of `apps/SOJ/docs/SPEC.md`
     ("Score Format"; the ZIPs are unpacked into folders):

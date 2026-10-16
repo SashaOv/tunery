@@ -9,6 +9,7 @@ from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.parts import (
+    LibraryType,
     TitleCandidate,
     chain_for_part,
     fuzzy_title_prefix,
@@ -93,11 +94,14 @@ class Library(Protocol):
 
 
 class DirectoryLibrary:
-    def __init__(self, path: Path, *, match: MatchMode = "exact") -> None:
+    def __init__(
+        self, path: Path, *, match: MatchMode = "exact", library_type: LibraryType = "combo"
+    ) -> None:
         # `path` as given is the library's place in the file-system view.
         self.view_path = lexical_absolute(path)
         self.path = path.resolve()
         self.match = match
+        self.library_type = library_type
         if not self.path.is_dir():
             raise ValueError(f"Library directory not found: {self.view_path}")
 
@@ -333,7 +337,9 @@ class DirectoryLibrary:
         """
         out: list[tuple[Path, TitleCandidate]] = []
         for pdf_path, folder in self._items:
-            cand = match_candidate(title, pdf_path.stem, folder)
+            cand = match_candidate(
+                title, pdf_path.stem, folder, self.library_type
+            )
             if cand is not None:
                 out.append((pdf_path, cand))
         if out or self.match != "fuzzy":
@@ -343,7 +349,9 @@ class DirectoryLibrary:
                 prefix = fuzzy_title_prefix(title, text) if text else None
                 if prefix is None:
                     continue
-                cand = match_candidate(prefix, pdf_path.stem, folder)
+                cand = match_candidate(
+                    prefix, pdf_path.stem, folder, self.library_type
+                )
                 if cand is not None:
                     out.append((pdf_path, cand))
                     break
@@ -366,6 +374,9 @@ class ScoreFolder(DirectoryLibrary):
 
 
 def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:
+    # Jumbo and combined-set scores are listed but never matched.
+    if not cand.selectable:
+        return None
     for step in rank:
         if step in cand.parts or step == cand.part:
             return step
@@ -594,6 +605,7 @@ class LibraryRecord(BaseModel):
     source: str | None = None
     shift: int | None = None
     match: MatchMode = "exact"
+    type: LibraryType = "combo"
 
     def _load_collection(self, path: Path, seen: tuple[Path, ...]) -> Library:
         if "source" in self.model_fields_set:
@@ -619,6 +631,13 @@ class LibraryRecord(BaseModel):
                 else record.model_copy(update={"match": self.match})
                 for record in records
             ]
+        if "type" in self.model_fields_set:
+            records = [
+                record
+                if "type" in record.model_fields_set
+                else record.model_copy(update={"type": self.type})
+                for record in records
+            ]
         seen = (*seen, path)
         return LibraryCollection(
             [record.load(path.parent, seen) for record in records]
@@ -642,7 +661,7 @@ class LibraryRecord(BaseModel):
                 )
             if "shift" in self.model_fields_set:
                 raise ValueError(f"Directory library {path} must not specify shift")
-            return DirectoryLibrary(path, match=self.match)
+            return DirectoryLibrary(path, match=self.match, library_type=self.type)
         if path.suffix.lower() == ".json" and path.is_file():
             if self.source is None:
                 raise ValueError(f"Indexed PDF library {path} requires source")
