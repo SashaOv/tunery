@@ -3,7 +3,6 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 import yaml
 from pydantic import BaseModel, Field, PositiveInt, RootModel, ValidationError
@@ -46,7 +45,7 @@ class SectionEntry(BaseModel):
     """A section containing nested file entries or subsections."""
 
     section: str
-    body: List["FileEntry | SectionEntry"] = Field(default_factory=list)
+    body: list["FileEntry | SectionEntry"] = Field(default_factory=list)
 
 
 class ConfigEntry(BaseModel):
@@ -55,10 +54,9 @@ class ConfigEntry(BaseModel):
     config: list[LibraryRecord]
 
 
-class Layout(RootModel[List[ConfigEntry | SectionEntry | FileEntry]]):
+class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
     """The complete layout schema - a list of config, sections, and/or file entries."""
 
-    pass
 
 
 def logical_cwd() -> Path:
@@ -258,7 +256,6 @@ def process_file_entry(
     ignore parts. Title entries resolve each subpart via chains, dedupe same
     files, report missing parts, and nest bookmarks when several files result.
     """
-    from tunery.parts import canonical_part_name
 
     matched_title: str | None = None
     score: float | None = None

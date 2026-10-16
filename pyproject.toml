@@ -26,6 +26,7 @@ tunery = "tunery.main:main"
 dev = [
     "pytest>=8.0.0",
     "pywolf",
+    "ruff>=0.17.1",
 ]
 
 [tool.uv]
@@ -40,3 +41,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tunery"]
+
+[tool.ruff.lint]
+extend-select = ["PLC0415"]

@@ -10,7 +10,6 @@ from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.keys import CONCERT_SUFFIX, is_concert, keyed_filename
 from tunery.parts import fuzzy_title_prefix
 
-
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
 PROJECT_CONFIG_NAMES = ("tunery.yaml", ".tunery.yaml")
@@ -209,7 +208,6 @@ class DirectoryLibrary:
         from tunery.parts import (
             canonical_part_name,
             chain_for_part,
-            match_candidate,
         )
 
         requested = canonical_part_name(requested_part)

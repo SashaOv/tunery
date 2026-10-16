@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pikepdf
-import pytest
 import yaml
 
 from tunery.render import output_path_for_label, render

@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 
 from rapidfuzz import fuzz
 
-
 COMBO_DEFAULT_PART = "Concert"
 
 # Instrument canonical -> (aliases, group). Aliases in normalized space form.

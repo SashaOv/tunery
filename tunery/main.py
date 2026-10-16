@@ -1,7 +1,8 @@
 """Tunery CLI - Build PDF setbooks from sheet music collections."""
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Sequence
+from typing import Annotated
 
 from cyclopts import App, Parameter
 

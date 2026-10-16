@@ -1,6 +1,6 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import pikepdf
 import pytest
@@ -574,7 +574,7 @@ def test_bind_pdf_handles_nested_sections(tmp_path: Path) -> None:
 def test_process_file_entry_returns_not_found_result(tmp_path: Path) -> None:
     """Test that process_file_entry returns NotFoundResult for missing titles."""
     from tunery.composer import Composer
-    from tunery.render import process_file_entry, FileEntry, NotFoundResult
+    from tunery.render import FileEntry, NotFoundResult, process_file_entry
 
     layout_dir = tmp_path / "setlist"
     layout_dir.mkdir()
