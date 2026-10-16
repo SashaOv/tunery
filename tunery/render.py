@@ -351,9 +351,9 @@ def process_file_entry(
     locked_hits, locked_missing = locked
     for sub in locked_missing:
         print(f'missing {sub} for "{title}"')
-    hits: list[tuple[str, str, object]] = []  # (subpart_canon, step, match)
-    for requested_canon, step, match in locked_hits:
-        hits.append((requested_canon, step, match))
+    hits: list[tuple[str, str, str, object]] = []  # (subpart, step, label, match)
+    for requested_canon, step, label, match in locked_hits:
+        hits.append((requested_canon, step, label, match))
         if verbose >= 1:
             print(f'  "{title}" {requested_canon}: {match.source.name}')
             if step != requested_canon:
@@ -372,14 +372,14 @@ def process_file_entry(
     if not hits:
         return NotFoundResult(title=title)
     # Dedupe same file, preserving first subpart order.
-    seen: dict[Path, tuple[str, str, object]] = {}
-    for requested_canon, step, match in hits:
+    seen: dict[Path, tuple[str, str, str, object]] = {}
+    for requested_canon, step, label, match in hits:
         src = match.source.resolve() if hasattr(match.source, "resolve") else match.source
         if src not in seen:
-            seen[src] = (requested_canon, step, match)
+            seen[src] = (requested_canon, step, label, match)
     unique = list(seen.values())
     if len(unique) == 1:
-        requested_canon, _step, match = unique[0]
+        _requested, _step, _label, match = unique[0]
         page = entry.page if entry.page is not None else match.page
         length = entry.length if entry.length is not None else match.length
         entry_page = composer.add(
@@ -395,12 +395,12 @@ def process_file_entry(
         )
     composer.start_section(title)
     first_page: int | None = None
-    first_source: object = unique[0][2].source
-    for requested_canon, _step, match in unique:
+    first_source: object = unique[0][3].source
+    for _requested, _step, label, match in unique:
         page = entry.page if entry.page is not None else match.page
         length = entry.length if entry.length is not None else match.length
         entry_page = composer.add(
-            title=requested_canon,
+            title=label,
             source=match.source,
             start=page,
             pages=length,

@@ -207,8 +207,11 @@ class DirectoryLibrary:
 
     def select_part(
         self, title: str, requested_part: str, score_key: str | None = None
-    ) -> tuple[Path, str, list[Path]] | None:
-        """Select a file for title+part via substitution chains."""
+    ) -> tuple[Path, str, str] | None:
+        """Select a file for title+part via substitution chains.
+
+        Returns (file, chain step, the file's part label).
+        """
         requested = canonical_part_name(requested_part)
         chain = chain_for_part(requested)
         scored = self.all_candidates(title)
@@ -238,11 +241,11 @@ class DirectoryLibrary:
                 return (c.tag_count, str(item[0]))
 
             step_hits.sort(key=_sort_key)
-            best_path, _ = step_hits[0]
+            best_path, best_cand = step_hits[0]
             if len(step_hits) > 1:
                 names = ", ".join(sorted(str(p.name) for p, _ in step_hits))
                 print(f'tie for "{title}" ({step}): {names}')
-            return best_path, step, [p for p, _ in step_hits]
+            return best_path, step, best_cand.part
         return None
 
     def all_candidates(self, title: str) -> list[tuple[Path, object]]:
@@ -421,7 +424,7 @@ class LibraryCollection:
             elif isinstance(library, DirectoryLibrary):
                 hit = library.select_part(title, requested_part, score_key)
                 if hit is not None:
-                    source, step, _ = hit
+                    source, step, _label = hit
                     return LibraryMatch(title=title, source=source), step
             else:
                 match = library.lookup_title(title)
@@ -431,8 +434,10 @@ class LibraryCollection:
 
     def select_subparts(
         self, title: str, subparts: list[str], score_key: str | None = None
-    ) -> tuple[list[tuple[str, str, LibraryMatch]], list[str]] | None:
+    ) -> tuple[list[tuple[str, str, str, LibraryMatch]], list[str]] | None:
         """Resolve several subparts with per-title library lock.
+
+        Each hit is (requested part, chain step, chart's part label, match).
 
         The winning library is the highest-priority one with a chain hit on
         ANY requested subpart. Remaining subparts resolve only within the
@@ -451,7 +456,7 @@ class LibraryCollection:
             if isinstance(library, DirectoryLibrary):
                 if library.all_candidates(title):
                     title_found = True
-                hits: list[tuple[str, str, LibraryMatch]] = []
+                hits: list[tuple[str, str, str, LibraryMatch]] = []
                 missing: list[str] = []
                 any_hit = False
                 for sub in subparts:
@@ -461,9 +466,9 @@ class LibraryCollection:
                         missing.append(requested_canon)
                     else:
                         any_hit = True
-                        source, step, _ = hit
+                        source, step, label = hit
                         hits.append(
-                            (requested_canon, step, LibraryMatch(title=title, source=source))
+                            (requested_canon, step, label, LibraryMatch(title=title, source=source))
                         )
                 if not any_hit:
                     continue
@@ -472,7 +477,7 @@ class LibraryCollection:
             if match is not None:
                 title_found = True
                 return (
-                    [(canonical_part_name(s), "Concert", match) for s in subparts],
+                    [(canonical_part_name(s), "Concert", "Concert", match) for s in subparts],
                     [],
                 )
         if title_found:

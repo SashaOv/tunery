@@ -529,7 +529,7 @@ reads the real libraries.
   for `Composer.__enter__`, the positional-only `__context`, the unused
   `best_cand`, and the dead if/else at `parts.py` (`parts = [part]` either
   way). Test: the gate passes.
-- **LIB5.2** Name child bookmarks by the file's part label (`Rhythm`,
+- [x] **LIB5.2** Name child bookmarks by the file's part label (`Rhythm`,
   `Piano/Guitar`, `Concert`), not the requested part. Test: Mo' Better
   Blues, Norwegian Wood and Poinciana bookmark trees.
 - **LIB5.3** Name fixes:

@@ -50,53 +50,39 @@ def make_rs_fixture(root: Path) -> None:
     (root / "tunery.yaml").write_text("- library: .\n")
 
 
-def test_rs_expands_to_rhythm_group(tmp_path: Path) -> None:
+def render_rs(root: Path, title: str) -> list[tuple[str, list[str]]]:
+    layout = write_layout(root / "gig.yaml", [{"title": title}])
+    render(layout, root / "book.pdf", part=["RS"])
+    with pikepdf.Pdf.open(root / "book.RS.pdf") as pdf:
+        return outline_titles(pdf)
+
+
+def test_rs_concert_only_title_stays_flat(tmp_path: Path) -> None:
     make_rs_fixture(tmp_path)
-    layout = write_layout(
-        tmp_path / "gig.yaml",
-        [{"title": "Poinciana"}, {"title": "Ballad"}],
-    )
 
-    render(layout, tmp_path / "book.pdf", part=["RS"])
+    assert render_rs(tmp_path, "Ballad") == [("Ballad", [])]
 
-    out = tmp_path / "book.RS.pdf"
-    assert out.exists()
-    with pikepdf.Pdf.open(out) as pdf:
-        titles = outline_titles(pdf)
-        # Poinciana nested (Bass + Concert fallback for Piano/Guitar/Drums deduped?),
-        # Ballad flat concert fallback.
-        assert titles[0][0] == "Poinciana"
-        assert titles[1] == ("Ballad", [])
+
+def test_rs_children_named_by_chart_used(tmp_path: Path) -> None:
+    make_rs_fixture(tmp_path)
+
+    assert render_rs(tmp_path, "Mo Better Blues") == [
+        ("Mo Better Blues", ["Rhythm", "Bass", "Drums"])
+    ]
+    assert render_rs(tmp_path, "Poinciana") == [("Poinciana", ["Concert", "Bass"])]
+
+
+def test_rs_dual_score_included_once(tmp_path: Path) -> None:
+    make_rs_fixture(tmp_path)
+
+    assert render_rs(tmp_path, "Norwegian Wood") == [
+        ("Norwegian Wood", ["Piano/Guitar", "Bass", "Drums"])
+    ]
 
 
 def test_guitar_reads_piano(tmp_path: Path) -> None:
     make_rs_fixture(tmp_path)
-    layout = write_layout(tmp_path / "gig.yaml", [{"title": "I Cant Help It"}])
 
-    render(layout, tmp_path / "book.pdf", part=["Rhythm"])
-
-    out = tmp_path / "book.Rhythm.pdf"
-    with pikepdf.Pdf.open(out) as pdf:
-        # Piano, Guitar→Piano (same file, deduped), Bass, Drums → 3 files nested.
-        titles = outline_titles(pdf)
-        assert titles[0][0] == "I Cant Help It"
-        assert set(titles[0][1]) == {"Piano", "Guitar", "Bass", "Drums"} or set(
-            titles[0][1]
-        ) <= {"Piano", "Guitar", "Bass", "Drums"}
-        # Guitar resolves (via Piano fallback) – file count 3 (Piano shared).
-        assert len(pdf.pages) == 3
-
-
-def test_norwegian_wood_dual_included_once(tmp_path: Path) -> None:
-    make_rs_fixture(tmp_path)
-    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Norwegian Wood"}])
-
-    render(layout, tmp_path / "book.pdf", part=["RS"])
-
-    with pikepdf.Pdf.open(tmp_path / "book.RS.pdf") as pdf:
-        titles = outline_titles(pdf)
-        assert titles[0][0] == "Norwegian Wood"
-        # Piano+Guitar share dual file, plus Bass, Drums → 3 files, 4 labels?
-        # Dual included once: children include Piano, Guitar, Bass, Drums (Piano/Guitar same file? currently separate labels).
-        assert "Bass" in titles[0][1]
-        assert "Drums" in titles[0][1]
+    assert render_rs(tmp_path, "I Cant Help It") == [
+        ("I Cant Help It", ["Piano", "Bass", "Drums"])
+    ]
