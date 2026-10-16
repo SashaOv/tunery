@@ -618,13 +618,20 @@ def _base_instrument(part: str) -> str:
 
 
 def _folder_score_key(folder: str | None) -> str | None:
-    if not folder:
-        return None
-    folder_norm = normalize_text(folder)
-    m = re.search(r"concert\s+([a-g][#b]?)", folder_norm)
-    if m:
-        return _parse_key_token(m.group(1))
-    return None
+    """Score key named by a title folder (`- Concert F`, `(in F)`, `- A Minor`)."""
+    return interpret_remainder(folder).score_key if folder else None
+
+
+def is_known_part(requested: str) -> bool:
+    """Whether a --part value names an instrument (with role), group or kind."""
+    part = _base_instrument(canonical_part_name(requested))
+    return (
+        part in _INSTRUMENT_GROUPS
+        or part in _GROUPS.values()
+        or part in _KINDS.values()
+        or part in KEY_GROUPS
+        or part == COMBO_DEFAULT_PART
+    )
 
 
 @dataclass

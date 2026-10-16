@@ -5,7 +5,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, PositiveInt, RootModel, ValidationError
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    PositiveInt,
+    RootModel,
+    ValidationError,
+    field_validator,
+)
 
 from tunery.composer import Composer
 from tunery.keys import (
@@ -22,7 +30,7 @@ from tunery.library import (
     PartHit,
     load_project_libraries,
 )
-from tunery.parts import canonical_part_name, normalize_text
+from tunery.parts import canonical_part_name, is_known_part, normalize_text
 
 
 class FileEntry(BaseModel):
@@ -38,6 +46,19 @@ class FileEntry(BaseModel):
     length: PositiveInt | None = None
     notes: str | None = None
     key: str | None = None
+    # Requested part -> part this title uses for it (`part:` or `parts:`).
+    part: dict[str, str] | None = Field(
+        default=None, validation_alias=AliasChoices("part", "parts")
+    )
+    # Preferred variation or free tags (`tag:` or `tags:`, one or a list).
+    tag: list[str] | None = Field(
+        default=None, validation_alias=AliasChoices("tag", "tags")
+    )
+
+    @field_validator("tag", mode="before")
+    @classmethod
+    def _tag_list(cls, value: object) -> object:
+        return [value] if isinstance(value, str) else value
 
     def model_post_init(self, context: object, /) -> None:
         if not self.file and not self.title:
@@ -51,10 +72,16 @@ class SectionEntry(BaseModel):
     body: list["FileEntry | SectionEntry"] = Field(default_factory=list)
 
 
-class ConfigEntry(BaseModel):
-    """Configuration entry adding libraries for subsequent lookup."""
+class NamedParts(BaseModel):
+    """Named part selections in a layout config (`part:` or `parts:`)."""
 
-    config: list[LibraryRecord]
+    part: dict[str, str] = Field(validation_alias=AliasChoices("part", "parts"))
+
+
+class ConfigEntry(BaseModel):
+    """Configuration entry adding libraries and named parts."""
+
+    config: list[LibraryRecord | NamedParts]
 
 
 class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
@@ -118,35 +145,49 @@ def output_path_for_label(output: Path, label: str | None) -> Path:
     return output.with_name(f"{output.stem}.{label}{output.suffix}")
 
 
-def expand_part_specs(parts: list[str] | str | None) -> list[tuple[str, list[str]]]:
+def _expand_part(raw: str, named: dict[str, str]) -> tuple[str, list[str]]:
+    """One --part element as (label, parts): a name from the layout config,
+    the rhythm section, or a single part."""
+    norm = normalize_text(raw)
+    if norm in named:
+        members: list[str] = []
+        for sub in named[norm].split(","):
+            if sub.strip():
+                members.extend(_expand_part(sub.strip(), {})[1])
+        return raw.strip(), list(dict.fromkeys(members))
+    if norm in RHYTHM_SECTION_NAMES:
+        return RHYTHM_SECTION_NAMES[norm], RHYTHM_SECTION
+    if not is_known_part(raw):
+        raise ValueError(
+            f'Unknown part "{raw.strip()}": not an instrument, group or kind, '
+            "and not named in the layout config"
+        )
+    canon = canonical_part_name(raw)
+    return canon, [canon]
+
+
+def expand_part_specs(
+    parts: list[str] | str | None, named: dict[str, str] | None = None
+) -> list[tuple[str, list[str]]]:
     """Normalize --part options into (output label, subparts) per output.
 
-    RS/Rhythm/Rhythm Section expands to Piano,Guitar,Bass,Drums, alone (label
-    RS/Rhythm/Rhythm Section) or inside a comma-separated value, which
-    combines its subparts under a '+'-joined label.
+    Each option is one output. A comma-separated value combines its parts
+    under a '+'-joined label. Names defined in the layout config and the
+    rhythm section (RS/Rhythm/Rhythm Section) expand to their parts.
     """
     if parts is None:
         return [("Concert", ["Concert"])]
     if isinstance(parts, str):
         parts = [parts]
+    named = {normalize_text(name): value for name, value in (named or {}).items()}
     specs: list[tuple[str, list[str]]] = []
     for spec in parts:
-        raw_subs = [s.strip() for s in spec.split(",") if s.strip()]
-        if not raw_subs:
+        expanded = [_expand_part(s.strip(), named) for s in spec.split(",") if s.strip()]
+        if not expanded:
             specs.append(("Concert", ["Concert"]))
             continue
-        labels: list[str] = []
-        subparts: list[str] = []
-        for raw in raw_subs:
-            norm = normalize_text(raw)
-            if norm in RHYTHM_SECTION_NAMES:
-                labels.append(RHYTHM_SECTION_NAMES[norm])
-                members = RHYTHM_SECTION
-            else:
-                labels.append(canonical_part_name(raw))
-                members = [labels[-1]]
-            subparts.extend(m for m in members if m not in subparts)
-        specs.append(("+".join(labels), subparts))
+        subparts = list(dict.fromkeys(p for _, members in expanded for p in members))
+        specs.append(("+".join(label for label, _ in expanded), subparts))
     return specs or [("Concert", ["Concert"])]
 
 
@@ -345,7 +386,13 @@ def process_file_entry(
         )
     if libraries is None:
         return NotFoundResult(title=title)
-    selection = libraries.select_parts(title, subparts, entry.key)
+    if entry.part:
+        mapping = {
+            canonical_part_name(asked): canonical_part_name(used)
+            for asked, used in entry.part.items()
+        }
+        subparts = list(dict.fromkeys(mapping.get(p, p) for p in subparts))
+    selection = libraries.select_parts(title, subparts, entry.key, entry.tag)
     if selection is None:
         return NotFoundResult(title=title)
     for warning in selection.warnings:
@@ -490,16 +537,20 @@ def render(
 
     layout_base = lexical_absolute(layout_path.parent)
     layout_entries: list[SectionEntry | FileEntry] = []
+    named_parts: dict[str, str] = {}
     for record in layout.root:
         if isinstance(record, ConfigEntry):
-            for library_record in record.config:
-                libraries.add(library_record.load(layout_base))
+            for config_record in record.config:
+                if isinstance(config_record, NamedParts):
+                    named_parts.update(config_record.part)
+                else:
+                    libraries.add(config_record.load(layout_base))
         else:
             layout_entries.append(record)
 
     default_dir = lexical_absolute(layout_path.parent)
     show_key = len(key_list) > 1
-    part_specs = expand_part_specs(part)
+    part_specs = expand_part_specs(part, named_parts)
 
     for label, subparts in part_specs:
         part_output = output_path_for_label(output, label if label != "Concert" else None)

@@ -13,6 +13,7 @@ from tunery.parts import (
     TitleCandidate,
     fuzzy_title_prefix,
     match_candidate,
+    normalize_text,
     rank_chain,
 )
 
@@ -236,14 +237,18 @@ class DirectoryLibrary:
         return self._display.get(path, path)
 
     def select_parts(
-        self, title: str, parts: list[str], score_key: str | None = None
+        self,
+        title: str,
+        parts: list[str],
+        score_key: str | None = None,
+        tags: list[str] | None = None,
     ) -> TitleSelection | None:
         """Choose a chart for each requested part of a title.
 
         Returns None when the library has no candidate for the title. Each
         part takes the best rank where any source (folder) has a candidate.
-        Among those: the title's top source first, then the fewest extra
-        words, then path order. One warning per title reports several
+        Among those: candidates carrying all `tags`, then the title's top
+        source, then the fewest extra words, then path order. One warning per title reports several
         candidates for a part, or charts from more than one folder.
         """
         cands = self.all_candidates(title)
@@ -264,6 +269,14 @@ class DirectoryLibrary:
                 cands = keyed
             else:
                 warnings.append(f'no {wanted} version of "{title}"')
+        wanted_tags = [normalize_text(tag) for tag in tags or []]
+
+        def carries_tags(cand: TitleCandidate) -> bool:
+            words = {normalize_text(w) for w in [*cand.variations, *cand.free_tags]}
+            return all(tag in words for tag in wanted_tags)
+
+        if wanted_tags and not any(carries_tags(c) for _, c in cands):
+            warnings.append(f'no {", ".join(tags or [])} version of "{title}"')
         source = {p: self.display_path(p).parent for p, _ in cands}
         top = _top_source(parts, cands, source)
 
@@ -277,6 +290,7 @@ class DirectoryLibrary:
                 continue
             at_rank.sort(
                 key=lambda h: (
+                    not carries_tags(h[1]),
                     source[h[0]] != top,
                     h[1].tag_count,
                     str(self.display_path(h[0])),
@@ -506,7 +520,11 @@ class LibraryCollection:
         return None
 
     def select_parts(
-        self, title: str, parts: list[str], score_key: str | None = None
+        self,
+        title: str,
+        parts: list[str],
+        score_key: str | None = None,
+        tags: list[str] | None = None,
     ) -> TitleSelection | None:
         """Choose charts for a title's parts, highest-priority library first.
 
@@ -519,7 +537,7 @@ class LibraryCollection:
         found: TitleSelection | None = None
         for library in reversed(self._libraries):
             if isinstance(library, (LibraryCollection, DirectoryLibrary)):
-                selection = library.select_parts(title, parts, score_key)
+                selection = library.select_parts(title, parts, score_key, tags)
             else:
                 match = library.lookup_title(title)
                 selection = (

@@ -169,8 +169,8 @@ structure on top. `file:` layouts keep working unchanged.
   - title: Funk in Deep Freeze
     part: {Tenor Sax: Flute}
   ```
-  The keywords are singular, like `tag:` and `key:`, and may hold several
-  values.
+  `part:`/`parts:` and `tag:`/`tags:` are both accepted, and may hold
+  several values (author, 2026-10-15).
   Which instrument reads `Horn 1`/`Horn 2` is decided only here; no rule
   guesses it.
 - **Substitution chains:**
@@ -553,11 +553,13 @@ reads the real libraries.
   - I Can't Help It with `SheetMusic/I Cant Help It` → a warning naming
     both folders;
   - one warning per title at most.
-- **LIB5.6** Named parts and per-chart choices in the layout:
+- [x] **LIB5.6** Named parts and per-chart choices in the layout:
   - a `part:` item in `config:` defines named parts (`--part norm` →
     `<stem>.norm.pdf`);
   - a chart's `part:` maps requested parts to others;
-  - a chart's `tag:` (one or several) prefers candidates carrying them.
+  - a chart's `tag:` (one or several) prefers candidates carrying them;
+  - a title folder's `(in F)` gives its score key, as `- Concert F` does,
+    so `key: F` finds `Norwegian Wood (in F)`.
 
   Tests: Norwegian Wood `{Tenor Sax: Horn 1}` under `norm`; Funk in Deep
   Freeze `{Tenor Sax: Flute}`; I Love Lucy `tag: v2` → `Tenor Sax.v2`;
