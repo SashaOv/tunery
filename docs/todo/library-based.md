@@ -540,7 +540,7 @@ reads the real libraries.
   Tests: `The Cape Verdean Blues - tenor (horn 2)` matches Tenor Sax and
   Horn 2; `Tenor Sax.v2` has variation `v2`; `Copy of Shaker Song - Tenor`
   counts one more extra word than `Shaker Song - Tenor`.
-- **LIB5.4** Rhythm section inside comma lists:
+- [x] **LIB5.4** Rhythm section inside comma lists:
   `Concert,Trumpet,Tenor Sax,Rhythm` expands `Rhythm` to its four members.
   Test: Mo' Better Blues gets Trumpet, Tenor Sax, Rhythm, Bass, Drums.
 - **LIB5.5** Ranks, sources, choice per part and warnings (Selection). This

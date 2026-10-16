@@ -41,6 +41,8 @@ def make_rs_fixture(root: Path) -> None:
     create_pdf(sm / "Mo Better Blues" / "Mo Better Blues-Rhythm.pdf", 1)
     create_pdf(sm / "Mo Better Blues" / "Mo Better Blues-Bass.pdf", 1)
     create_pdf(sm / "Mo Better Blues" / "Mo Better Blues-Drums.pdf", 1)
+    create_pdf(sm / "Mo Better Blues" / "Mo Better Blues-Trumpet.pdf", 1)
+    create_pdf(sm / "Mo Better Blues" / "Mo Better Blues-Tenor Sax.pdf", 1)
     # Concert-only title stays flat
     create_pdf(sm / "Ballad" / "Ballad-Concert.pdf", 2)
     # Norwegian Wood with Piano:Guitar dual
@@ -86,3 +88,15 @@ def test_guitar_reads_piano(tmp_path: Path) -> None:
     assert render_rs(tmp_path, "I Cant Help It") == [
         ("I Cant Help It", ["Piano", "Bass", "Drums"])
     ]
+
+
+def test_rhythm_expands_inside_comma_list(tmp_path: Path) -> None:
+    make_rs_fixture(tmp_path)
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Mo Better Blues"}])
+
+    render(layout, tmp_path / "book.pdf", part=["Trumpet,Tenor Sax,Rhythm"])
+
+    with pikepdf.Pdf.open(tmp_path / "book.Trumpet+Tenor Sax+Rhythm.pdf") as pdf:
+        assert outline_titles(pdf) == [
+            ("Mo Better Blues", ["Trumpet", "Tenor Sax", "Rhythm", "Bass", "Drums"])
+        ]

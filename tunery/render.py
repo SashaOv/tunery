@@ -86,6 +86,10 @@ def lexical_absolute(path: Path) -> Path:
     return Path(os.path.normpath(path))
 
 
+RHYTHM_SECTION = ["Piano", "Guitar", "Bass", "Drums"]
+RHYTHM_SECTION_NAMES = {"rs": "RS", "rhythm": "Rhythm", "rhythm section": "Rhythm Section"}
+
+
 def output_path_for_part(output: Path, part: str | list[str] | None) -> Path:
     """Derive per-part setbook output path from the base output path."""
     if part is None:
@@ -116,9 +120,9 @@ def output_path_for_label(output: Path, label: str | None) -> Path:
 def expand_part_specs(parts: list[str] | str | None) -> list[tuple[str, list[str]]]:
     """Normalize --part options into (output label, subparts) per output.
 
-    Single RS/Rhythm/Rhythm Section expands to Piano,Guitar,Bass,Drums with
-    output label RS/Rhythm/Rhythm Section respectively. Comma-separated values
-    combine subparts with '+' output naming.
+    RS/Rhythm/Rhythm Section expands to Piano,Guitar,Bass,Drums, alone (label
+    RS/Rhythm/Rhythm Section) or inside a comma-separated value, which
+    combines its subparts under a '+'-joined label.
     """
     if parts is None:
         return [("Concert", ["Concert"])]
@@ -130,20 +134,19 @@ def expand_part_specs(parts: list[str] | str | None) -> list[tuple[str, list[str
         if not raw_subs:
             specs.append(("Concert", ["Concert"]))
             continue
-        if len(raw_subs) == 1:
-            norm = normalize_text(raw_subs[0])
-            if norm in ("rs", "rhythm", "rhythm section"):
-                label = {"rs": "RS", "rhythm": "Rhythm", "rhythm section": "Rhythm Section"}[norm]
-                specs.append((label, ["Piano", "Guitar", "Bass", "Drums"]))
-                continue
-        canons = [canonical_part_name(s) for s in raw_subs]
-        if len(canons) == 1:
-            specs.append((canons[0], canons))
-        else:
-            specs.append(("+".join(canons), canons))
-    if not specs:
-        return [("Concert", ["Concert"])]
-    return specs
+        labels: list[str] = []
+        subparts: list[str] = []
+        for raw in raw_subs:
+            norm = normalize_text(raw)
+            if norm in RHYTHM_SECTION_NAMES:
+                labels.append(RHYTHM_SECTION_NAMES[norm])
+                members = RHYTHM_SECTION
+            else:
+                labels.append(canonical_part_name(raw))
+                members = [labels[-1]]
+            subparts.extend(m for m in members if m not in subparts)
+        specs.append(("+".join(labels), subparts))
+    return specs or [("Concert", ["Concert"])]
 
 
 def resolve_path(path_str: str, base_dir: Path) -> Path:
