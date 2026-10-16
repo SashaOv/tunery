@@ -1,35 +1,41 @@
 # Tunery
 
-Tunery builds printable PDF setbooks from existing sheet-music PDFs. Charts can
-come from directories of standalone PDFs or from JSON-indexed songbooks.
+Tunery builds printable PDF setbooks from existing sheet-music PDFs. A layout
+lists the tunes; libraries supply the charts, from folders of PDFs or from
+JSON-indexed songbooks. Tunery picks the part each player needs.
 
 ## Configure libraries
 
-Add an ordered `tunery.yaml` file to the project:
+Add an ordered `tunery.yaml` (or `.tunery.yaml`) file to the project:
 
 ```yaml
 - library: indexes/real-book.json
   source: books/Real Book.pdf
   shift: 0
   match: fuzzy
-- library: handouts
-  match: exact
+- library: SheetMusic
+  match: fuzzy
 ```
 
-The `source` field is required for indexed PDF libraries, while `shift` is
-optional and defaults to `0`. Paths are relative to `tunery.yaml`. Later
-libraries have higher lookup priority. If no project configuration is found,
-Tunery uses the starting directory as a directory library.
+- Later libraries have higher priority, so list real books first and your
+  own charts last.
+- `source` is required for indexed PDF libraries; `shift` is optional and
+  defaults to `0`. `match` is `exact` (default) or `fuzzy`.
+- Paths are relative to the configuration file.
 
-A `library` may also point to a YAML collection file holding multiple library
-records, with paths resolved relative to that file:
+Tunery finds the configuration by walking up from the layout's folder (from
+the working directory for `lookup`). A folder that is a symlink, such as a
+link into Google Drive, is treated as part of the tree it is linked from:
+walking up from `GDrive/Shows/gig` reaches the folder holding `GDrive`.
+Without a configuration, the layout's folder is the library.
+
+A `library` may also point to a YAML collection file holding more library
+records, with paths relative to that file. A `match` set on the reference is
+a default for inner records that don't set their own:
 
 ```yaml
 - library: /path/to/rb-index/tunery.yaml
 ```
-
-A `match` set on such a reference is a default: inner records that set their
-own `match` win.
 
 An indexed PDF library names one source PDF and its chart ranges:
 
@@ -40,41 +46,84 @@ An indexed PDF library names one source PDF and its chart ranges:
 ]
 ```
 
+### Folder libraries
+
+A folder library is searched recursively, following symlinks:
+
+- `_archive` folders are skipped;
+- folders starting with `_` (such as `_Petes`) are searched, but their names
+  are ignored;
+- a title matches the start of a file name or of its folder name
+  (`Autumn Leaves/Autumn Leaves - Bass.pdf`, `Morning.Bb.pdf`).
+
+What follows the title names the part (`Bass`, `Tenor Sax`, `Bb`, `Rhythm`,
+`Lead Sheet`, `Piano:Guitar`) and its variations: score key (`Concert F`,
+`(in F)`), version (`v2`), and anything else.
+
 ## Render a setbook
 
-Create a layout such as `favorites.yaml`:
+Create a layout such as `gig.yaml`:
 
 ```yaml
 - config:
-    - library: favorite-tunes
-      match: exact
+    - library: extra-charts
+    - part:
+        full: Concert, Trumpet, Tenor Sax, Rhythm
+        norm: Tenor Sax
 - section: Set 1
   body:
     - title: Giant Steps
+    - title: Norwegian Wood
+      key: F
+      part: {Tenor Sax: Horn 1, Trumpet: Horn 2}
+    - title: I Love Lucy
+      tag: v2
+    - title: Si Tu Vois Ma Mere
+      file: ../Vault/Instrumentals/Si Tu Voir Ma Mere
     - file: Lennie's Pennies.pdf
       notes: Watch the ending
 ```
 
-Layout libraries are resolved relative to the layout and take priority over
-project libraries.
+- Layout libraries are resolved relative to the layout and take priority
+  over project libraries. A `part:` item names part selections.
+- On a chart, `part:` (or `parts:`) says which part this tune uses for a
+  requested one, `key:` picks a score key, and `tag:` (or `tags:`) prefers
+  charts carrying a tag. `file:` names a PDF, or a folder whose PDFs are
+  this tune's charts.
 
 ```console
-tunery render favorites.yaml
+tunery render gig.yaml                       # concert book: gig.pdf
+tunery render gig.yaml --part "Tenor Sax"    # gig.Tenor Sax.pdf
+tunery render gig.yaml --part norm --part rs # one book per --part
+tunery render gig.yaml --part "Bass,Piano"   # both parts in one book
 tunery lookup "Giant Steps"
 ```
 
-Run `tunery --help` for command options.
+- **Parts:** when a tune has no chart for the requested part, Tunery
+  substitutes: an instrument falls back to its key group (Tenor Sax → Bb),
+  then to the concert chart or lead sheet; Piano, Bass and Drums fall back
+  to a Rhythm chart first, and Guitar to the Piano chart.
+- **Rhythm section:** `Rhythm`, `RS` or `Rhythm Section` means
+  `Piano,Guitar,Bass,Drums`.
+- **Several charts for one tune** are nested under the tune's bookmark,
+  named by part. `--explicit-bookmark-hierarchy` prefixes them with `_ ` for
+  readers that show one bookmark level.
+- **Warnings** report missing parts, competing charts and charts taken from
+  more than one folder. `-v` adds the configuration used and the chart and
+  substitution for each part; `-vv` adds every candidate.
+- `--base DIR` resolves relative command-line paths against `DIR` instead of
+  the working directory. `-k KEY` renders per-key editions (`Song.Bb.pdf`).
+
+Run `tunery --help` for all options.
 
 ## Developing
 
-Follow [the repository guidelines](docs/GUIDELINES.md).
-
-### Set up
-
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
-- Create a virtual environment with `uv venv`.
 - Install dependencies with `uv sync`.
-- Optionally activate the environment with `source .venv/bin/activate`.
+- Run `uv run build.py gate` before committing: it lints with ruff and runs
+  the tests.
+- Behavior is specified in `docs/SPEC.md`; changes in progress are planned
+  in `docs/todo/`.
 
 ## License
 
