@@ -6,6 +6,7 @@ from typing import Literal, Protocol
 
 import yaml
 from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
+from rapidfuzz import fuzz as _fuzz
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.parts import (
@@ -42,7 +43,8 @@ class LibraryIndexEntry(BaseModel):
 def _index_ranges(
     value: PositiveInt | tuple[PositiveInt, PositiveInt] | list[tuple[PositiveInt, PositiveInt]],
 ) -> list[tuple[int, int]]:
-    """One part value as [(page, length)]: `15`, `[17, 3]` or `[[26, 1]]`."""
+    """One part value as [(page, length)]: `15` is one page, `[17, 3]` is one
+    range, `[[26, 1]]` lists ranges."""
     if isinstance(value, int):
         return [(value, 1)]
     if (
@@ -385,9 +387,22 @@ class DirectoryLibrary:
         """
         pairs: list[tuple[Path, TitleCandidate]] = []
         warnings: list[str] = []
-        for entry in self.index:
-            if normalize_key(entry.title) != normalize_key(title):
-                continue
+        entries = [
+            entry
+            for entry in self.index
+            if normalize_key(entry.title) == normalize_key(title)
+        ]
+        if not entries and self.match == "fuzzy":
+            best: LibraryIndexEntry | None = None
+            best_score = 90
+            for entry in self.index:
+                score = _fuzz.ratio(
+                    normalize_key(title), normalize_key(entry.title)
+                )
+                if score >= best_score:
+                    best, best_score = entry, score
+            entries = [best] if best is not None else []
+        for entry in entries:
             if entry.file is not None:
                 raw = Path(entry.file)
                 resolved = raw if raw.is_absolute() else self.path / raw

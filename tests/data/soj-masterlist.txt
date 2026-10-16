@@ -1,0 +1,44 @@
+# MasterList file names (relative paths) for the four SOJ test books' titles.
+# Copied once from GDrive/MasterList; the test rebuilds them as blank PDFs.
+Bandstand Boogie-Lowden.pdf
+Ain’t That a Kick in the Head.pdf
+Hay Burner-Nestico/Bass.pdf
+Hay Burner-Nestico/Piano.pdf
+Orange Colored Sky-Holmes.pdf
+Gato Gordo-Burger/Gato - Bass.pdf
+Gato Gordo-Burger/Gato - Piano.pdf
+La Mer (Beyond the Sea)/Bass.pdf
+La Mer (Beyond the Sea)/Piano.pdf
+Kansas City-Lowden.pdf
+Moonglow-Wolpe.pdf
+Can't Take My Eyes Off You-Warrington.pdf
+Walking My Baby Back Home-May.pdf
+Do Nothing till You Hear from Me-Wolpe.pdf
+Hooked on a Feeling-Burger/Hooked On A Feeling - Bass.pdf
+Hooked on a Feeling-Burger/Hooked On A Feeling - Keys.pdf
+I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 016 Bass].pdf
+I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 015 Piano].pdf
+Sweet Home Chicago-Clark.pdf
+Sweet Home Chicago.Bb.pdf
+Summer Wind (Db).pdf
+Mack the Knife (Bb) (Bb)-Berger/Mack The Knife bss.pdf
+Almost Like Being In Love (Niehaus).pdf
+Give Me the Simple Life-Wolpe.pdf
+I've Got You Under My Skin - Ebm.pdf
+When You're Smiling-Kubis.pdf
+How About You-Wolpe.pdf
+Lullaby of Birdland-Dedrick.pdf
+You Go to My Head-Dedrick.pdf
+L-O-V-E-Gabler.pdf
+I'm Confessin'-Warrington.pdf
+It's Only A Paper Moon.pdf
+Fly Me To The Moon/fmttmbass.pdf
+Swingin’ Shepard Blues, The-Mark Taylor.pdf
+Day in the Life of a Fool, A-Nowak.pdf
+I’m Gonna Sit Right Down and Write Myself a Letter.pdf
+Groovin’ Easy-Nestico.pdf
+I Just Found Out About Love.pdf
+New York New York (D)-London Orch..pdf
+When I Fall in Love-Holmes.pdf
+What I Did For Love-Lowden.pdf
+It’s Oh, So Nice-Nestico.pdf

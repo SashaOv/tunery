@@ -300,12 +300,11 @@ def _add_hit(
 ) -> int:
     """Add one hit's ranges in list order under a single bookmark: the first
     range takes `bookmark_title`, continuation ranges take none."""
-    ranges = (
-        match.ranges
-        if entry.page is None and entry.length is None and match.ranges
-        else [(entry.page if entry.page is not None else match.page,
-               entry.length if entry.length is not None else match.length)]
-    )
+    if entry.page is None and entry.length is None and match.ranges:
+        ranges = list(match.ranges)
+    else:
+        ranges = [(entry.page if entry.page is not None else match.page,
+                   entry.length if entry.length is not None else match.length)]
     first_page: int | None = None
     for i, (start, pages) in enumerate(ranges):
         entry_page = composer.add(

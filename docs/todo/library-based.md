@@ -59,7 +59,8 @@ structure on top. `file:` layouts keep working unchanged.
   reference passes `type` on like `match`. Forced per-item metadata in the
   record overrides everything derived from names (backlog).
 - **Part index** (big band): a record's `index:` lists `{title, file?,
-  parts}` entries; part values are `page`, `[page, length]` or a list of
+  parts}` entries, matched by normalized title (fuzzily in fuzzy
+  libraries); part values are `page`, `[page, length]` or a list of
   ranges. Each entry resolves its file (explicit `file:`, else the title's
   jumbo file) and contributes one candidate per part at that part's own
   step.
@@ -1025,7 +1026,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   pages are out of order), so the simplest rendering will do (author,
   2026-10-16). Test: Come Dance With Me's bass is pages 26 then 25, with one
   bookmark.
-- **LIB7.4** SOJ test case.
+- [x] **LIB7.4** SOJ test case.
   - `tests/data/` gets the `MasterList` names for the four books' titles,
     the converted index, and the hand books' charts (file and pages per
     title).

@@ -59,6 +59,7 @@ _GROUPS: dict[str, str] = {
     "concert": "Concert",
     "c instruments": "Concert",
     "c instr": "Concert",
+    "bass clef": "Bass Clef",
     "melody": "Melody",
     "rhythm": "Rhythm",
     "rhythm section": "Rhythm",
@@ -767,6 +768,7 @@ class TitleCandidate:
     # Set for part-index entries: pages of the part inside its file.
     page: int | None = None
     length: int | None = None
+    # All ranges, in list order.
     ranges: list[tuple[int, int]] | None = None
 
     @property

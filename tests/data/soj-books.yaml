@@ -1,0 +1,171 @@
+# Hand books' charts (file and pages per title) for the SOJ test books.
+# Copied from GDrive/26-07-09/*.yaml, 26-08-07/*.bass.yaml and
+# 26-09-12/*.bass.yaml; page without length renders to the end of the file.
+bass-26-07-09:
+  titles:
+  - Bandstand Boogie
+  - Ain't That a Kick in the Head
+  - Hay Burner
+  - Orange Colored Sky
+  - Gato Gordo
+  - La Mer (Beyond the Sea)
+  - Kansas City
+  - Moonglow
+  - Can't Take My Eyes Off You
+  - Walking My Baby Back Home
+  - Do Nothing till You Hear from Me
+  - Hooked on a Feeling
+  - I Feel Good
+  - Sweet Home Chicago
+  - Summer Wind
+  charts:
+    Bandstand Boogie: {file: "Bandstand Boogie-Lowden.pdf", page: 15, length: null}
+    Ain't That a Kick in the Head: {file: "Ain’t That a Kick in the Head.pdf", page: 4, length: null}
+    Hay Burner: {file: "Hay Burner-Nestico/Bass.pdf", page: null, length: null}
+    Orange Colored Sky: {file: "Orange Colored Sky-Holmes.pdf", page: 28, length: 2}
+    Gato Gordo: {file: "Gato Gordo-Burger/Gato - Bass.pdf", page: null, length: null}
+    La Mer (Beyond the Sea): {file: "La Mer (Beyond the Sea)/Bass.pdf", page: null, length: null}
+    Kansas City: {file: "Kansas City-Lowden.pdf", page: 27, length: 2}
+    Moonglow: {file: "Moonglow-Wolpe.pdf", page: 27, length: 2}
+    Can't Take My Eyes Off You: {file: "Can't Take My Eyes Off You-Warrington.pdf", page: 35, length: 2}
+    Walking My Baby Back Home: {file: "Walking My Baby Back Home-May.pdf", page: 35, length: 2}
+    Do Nothing till You Hear from Me: {file: "Do Nothing till You Hear from Me-Wolpe.pdf", page: 29, length: 2}
+    Hooked on a Feeling: {file: "Hooked on a Feeling-Burger/Hooked On A Feeling - Bass.pdf", page: null, length: null}
+    I Feel Good: {file: "I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 016 Bass].pdf", page: null, length: null}
+    Sweet Home Chicago: {file: "Sweet Home Chicago-Clark.pdf", page: 27, length: 2}
+    Summer Wind: {file: "Summer Wind (Db).pdf", page: 31, length: 2}
+piano-26-07-09:
+  titles:
+  - Bandstand Boogie
+  - Ain't That a Kick in the Head
+  - Hay Burner
+  - Orange Colored Sky
+  - Gato Gordo
+  - La Mer (Beyond the Sea)
+  - Kansas City
+  - Moonglow
+  - Can't Take My Eyes Off You
+  - Walking My Baby Back Home
+  - Do Nothing till You Hear from Me
+  - Hooked on a Feeling
+  - I Feel Good
+  - Sweet Home Chicago
+  - Summer Wind
+  charts:
+    Bandstand Boogie: {file: "Bandstand Boogie-Lowden.pdf", page: 17, length: 3}
+    Ain't That a Kick in the Head: {file: "Ain’t That a Kick in the Head.pdf", page: 7, length: null}
+    Hay Burner: {file: "Hay Burner-Nestico/Piano.pdf", page: null, length: null}
+    Orange Colored Sky: {file: "Orange Colored Sky-Holmes.pdf", page: 30, length: 2}
+    Gato Gordo: {file: "Gato Gordo-Burger/Gato - Piano.pdf", page: null, length: null}
+    La Mer (Beyond the Sea): {file: "La Mer (Beyond the Sea)/Piano.pdf", page: null, length: null}
+    Kansas City: {file: "Kansas City-Lowden.pdf", page: 33, length: 3}
+    Moonglow: {file: "Moonglow-Wolpe.pdf", page: 23, length: 4}
+    Can't Take My Eyes Off You: {file: "Can't Take My Eyes Off You-Warrington.pdf", page: 31, length: 4}
+    Walking My Baby Back Home: {file: "Walking My Baby Back Home-May.pdf", page: 31, length: 5}
+    Do Nothing till You Hear from Me: {file: "Do Nothing till You Hear from Me-Wolpe.pdf", page: 38, length: 4}
+    Hooked on a Feeling: {file: "Hooked on a Feeling-Burger/Hooked On A Feeling - Keys.pdf", page: null, length: null}
+    I Feel Good: {file: "I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 015 Piano].pdf", page: null, length: null}
+    Sweet Home Chicago: {file: "Sweet Home Chicago-Clark.pdf", page: 29, length: 3}
+    Summer Wind: {file: "Summer Wind (Db).pdf", page: 28, length: 4}
+bass-26-08-07:
+  titles:
+  - Mack the Knife
+  - Bandstand Boogie
+  - Moonglow
+  - Hay Burner
+  - La Mer (Beyond the Sea)
+  - Gato Gordo
+  - Almost Like Being In Love
+  - Give Me the Simple Life
+  - I've Got You Under My Skin
+  - When You're Smiling
+  - How About You
+  - Lullaby of Birdland
+  - Walking My Baby Back Home
+  - You Go To My Head
+  - Orange Colored Sky
+  - Sweet Home Chicago
+  - L-O-V-E
+  - I Feel Good
+  - Summer Wind
+  - Do Nothing till You Hear from Me
+  - Can't Take My Eyes Off You
+  charts:
+    Mack the Knife: {file: "Mack the Knife (Bb) (Bb)-Berger/Mack The Knife bss.pdf", page: null, length: null}
+    Bandstand Boogie: {file: "Bandstand Boogie-Lowden.pdf", page: 15, length: null}
+    Moonglow: {file: "Moonglow-Wolpe.pdf", page: 27, length: 2}
+    Hay Burner: {file: "Hay Burner-Nestico/Bass.pdf", page: null, length: null}
+    La Mer (Beyond the Sea): {file: "La Mer (Beyond the Sea)/Bass.pdf", page: null, length: null}
+    Gato Gordo: {file: "Gato Gordo-Burger/Gato - Bass.pdf", page: null, length: null}
+    Almost Like Being In Love: {file: "Almost Like Being In Love (Niehaus).pdf", page: 22, length: 2}
+    Give Me the Simple Life: {file: "Give Me the Simple Life-Wolpe.pdf", page: 33, length: 3}
+    I've Got You Under My Skin: {file: "I've Got You Under My Skin - Ebm.pdf", page: 27, length: 2}
+    When You're Smiling: {file: "When You're Smiling-Kubis.pdf", page: 41, length: 4}
+    How About You: {file: "How About You-Wolpe.pdf", page: 6, length: 2}
+    Lullaby of Birdland: {file: "Lullaby of Birdland-Dedrick.pdf", page: 21, length: null}
+    Walking My Baby Back Home: {file: "Walking My Baby Back Home-May.pdf", page: 35, length: 2}
+    You Go To My Head: {file: "You Go to My Head-Dedrick.pdf", page: 3, length: 2}
+    Orange Colored Sky: {file: "Orange Colored Sky-Holmes.pdf", page: 28, length: 2}
+    Sweet Home Chicago: {file: "Sweet Home Chicago-Clark.pdf", page: 27, length: 2}
+    L-O-V-E: {file: "L-O-V-E-Gabler.pdf", page: 47, length: 3}
+    I Feel Good: {file: "I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 016 Bass].pdf", page: null, length: null}
+    Summer Wind: {file: "Summer Wind (Db).pdf", page: 31, length: 2}
+    Do Nothing till You Hear from Me: {file: "Do Nothing till You Hear from Me-Wolpe.pdf", page: 29, length: 2}
+    Can't Take My Eyes Off You: {file: "Can't Take My Eyes Off You-Warrington.pdf", page: 35, length: 2}
+bass-26-09-12:
+  titles:
+  - Can't Take My Eyes Off of You
+  - Bandstand Boogie
+  - Hay Burner
+  - Fly Me To The Moon
+  - I've Got You Under My Skin
+  - Give Me The Simple Life
+  - Moonglow
+  - Swingin' Shepard Blues, The
+  - A Day in the Life of a Fool
+  - Kansas City
+  - I Feel Good
+  - Mack The Knife
+  - I'm Confessin'
+  - I'm Gonna Sit Right Down
+  - Walking My Baby Back Home
+  - It's Only A Paper Moon
+  - Almost Like Being in Love
+  - Groovin' Easy
+  - L-O-V-E
+  - You Go To My Head
+  - I Just Found Out About Love
+  - New York New York
+  - When I Fall in Love
+  - What I Did For Love
+  - It's Oh, So Nice
+  charts:
+    Can't Take My Eyes Off of You: {file: "Can't Take My Eyes Off You-Warrington.pdf", page: 35, length: 2}
+    Bandstand Boogie: {file: "Bandstand Boogie-Lowden.pdf", page: 15, length: null}
+    Hay Burner: {file: "Hay Burner-Nestico/Bass.pdf", page: null, length: null}
+    I've Got You Under My Skin: {file: "I've Got You Under My Skin - Ebm.pdf", page: 27, length: 2}
+    Give Me The Simple Life: {file: "Give Me the Simple Life-Wolpe.pdf", page: 33, length: 3}
+    Moonglow: {file: "Moonglow-Wolpe.pdf", page: 27, length: 2}
+    Kansas City: {file: "Kansas City-Lowden.pdf", page: 27, length: 2}
+    I Feel Good: {file: "I Feel Good-Burger/Finale 2004a - [IFEELGOOD - 016 Bass].pdf", page: null, length: null}
+    Mack The Knife: {file: "Mack the Knife (Bb) (Bb)-Berger/Mack The Knife bss.pdf", page: null, length: null}
+    I'm Confessin': {file: "I'm Confessin'-Warrington.pdf", page: 27, length: 2}
+    Walking My Baby Back Home: {file: "Walking My Baby Back Home-May.pdf", page: 35, length: 2}
+    It's Only A Paper Moon: {file: "It's Only A Paper Moon.pdf", page: 25, length: 2}
+    Almost Like Being in Love: {file: "Almost Like Being In Love (Niehaus).pdf", page: 22, length: 2}
+    L-O-V-E: {file: "L-O-V-E-Gabler.pdf", page: 47, length: 3}
+    You Go To My Head: {file: "You Go to My Head-Dedrick.pdf", page: 3, length: 2}
+  # Titles without an index entry: matched files exist but no part matches.
+  missing:
+  - Fly Me To The Moon
+  - Swingin' Shepard Blues, The
+  - A Day in the Life of a Fool
+  - Groovin' Easy
+  - I Just Found Out About Love
+  - New York New York
+  - When I Fall in Love
+  - What I Did For Love
+  - It's Oh, So Nice
+  # Matched by no file at all (the layout title is a prefix of the file).
+  not_found:
+  - I'm Gonna Sit Right Down
