@@ -1,5 +1,6 @@
 """PDF rendering logic for combining PDFs with table of contents."""
 
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -436,6 +437,34 @@ def process_items(
             print(result.format())
 
 
+def _layout_titles(items: list[SectionEntry | FileEntry]) -> list[str]:
+    """Every chart title in a layout, in order, sections included."""
+    titles: list[str] = []
+    for item in items:
+        if isinstance(item, SectionEntry):
+            titles.extend(_layout_titles(item.body))
+        elif item.title is not None:
+            titles.append(item.title)
+    return titles
+
+
+def _filter_titles(
+    items: list[SectionEntry | FileEntry], wanted: set[str]
+) -> list[SectionEntry | FileEntry]:
+    """Layout items reduced to the requested titles."""
+    kept: list[SectionEntry | FileEntry] = []
+    for item in items:
+        if isinstance(item, SectionEntry):
+            kept.append(
+                SectionEntry(
+                    section=item.section, body=_filter_titles(item.body, wanted)
+                )
+            )
+        elif item.title in wanted:
+            kept.append(item)
+    return kept
+
+
 def render(
     layout_path: Path,
     output: Path,
@@ -443,6 +472,7 @@ def render(
     part: str | list[str] | None = None,
     verbose: int = 0,
     explicit_bookmark_hierarchy: bool = False,
+    test: list[str] | None = None,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -498,7 +528,40 @@ def render(
     default_dir = layout_path.parent
     part_specs = expand_part_specs(part, named_parts)
 
+    wanted: set[str] | None = None
+    if test is not None:
+        names = [name.strip() for name in test]
+        if not any(name in (".", "") for name in names):
+            wanted = set(names)
+            unknown = [
+                name for name in wanted if name not in _layout_titles(layout_entries)
+            ]
+            if unknown:
+                raise ValueError(
+                    f"Title not in layout: {', '.join(sorted(unknown))}"
+                )
+        if wanted is not None:
+            layout_entries = _filter_titles(layout_entries, wanted)
+
     for label, subparts in part_specs:
+        if test is not None:
+            # Dry run: -vv results to a scratch PDF that is deleted.
+            with (
+                tempfile.TemporaryDirectory() as scratch,
+                Composer(Path(scratch) / "dry.pdf", autosave=False) as composer,
+            ):
+                process_items(
+                    layout_entries,
+                    default_dir,
+                    composer,
+                    libraries,
+                    subparts,
+                    2,
+                    PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
+                    label,
+                    named_parts,
+                )
+            continue
         part_output = output_path_for_label(output, label if label != "Concert" else None)
         with Composer(part_output, autosave=False) as composer:
             process_items(

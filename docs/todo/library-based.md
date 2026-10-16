@@ -826,7 +826,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   project config; a symlinked collection file still resolves against its
   real location. Test: the review's `Link/collection.yaml` case shows
   `Link/scores/Tune.pdf`.
-- **LIB6.7** `render --test TITLE` (repeatable): resolve the named titles,
+- [x] **LIB6.7** `render --test TITLE` (repeatable): resolve the named titles,
   print `-vv`-level results, write no PDF. `.` or `""` means every title
   (author, 2026-10-15). A TITLE not in the layout is an error. Tests: no
   file is written; `--test A --test B` prints only A and B; `--test .` and

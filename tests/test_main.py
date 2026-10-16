@@ -16,9 +16,10 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         part: list[str] | None = None,
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
+        test: list[str] | None = None,
     ):
         calls.append(
-            (layout, output, base, part, verbose, explicit_bookmark_hierarchy)
+            (layout, output, base, part, verbose, explicit_bookmark_hierarchy, test)
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -33,6 +34,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             None,
             0,
             False,
+            None,
         )
     ]
 
@@ -47,9 +49,10 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         part: list[str] | None = None,
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
+        test: list[str] | None = None,
     ):
         calls.append(
-            (layout, output, base, part, verbose, explicit_bookmark_hierarchy)
+            (layout, output, base, part, verbose, explicit_bookmark_hierarchy, test)
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -81,6 +84,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             ["Piano", "Bass,Piano"],
             1,
             True,
+            None,
         )
     ]
 
@@ -117,3 +121,24 @@ def test_lookup_command_accepts_multiple_titles(monkeypatch) -> None:
         ("Blue Monk", None, None),
         ("Autumn Leaves", None, None),
     ]
+
+
+def test_render_command_forwards_test_option(monkeypatch) -> None:
+    calls = []
+
+    def render(
+        layout: Path,
+        output: Path,
+        base: Path | None = None,
+        part: list[str] | None = None,
+        verbose: int = 0,
+        explicit_bookmark_hierarchy: bool = False,
+        test: list[str] | None = None,
+    ):
+        calls.append(test)
+
+    monkeypatch.setattr(cli, "render", render)
+
+    cli.main(["render", "favorites.yaml", "--test", "A", "--test", "B"])
+
+    assert calls == [["A", "B"]]

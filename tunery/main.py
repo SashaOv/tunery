@@ -59,6 +59,13 @@ def render_command(
             help='Prefix part bookmarks with "_ " for readers that show one bookmark level.',
         ),
     ] = False,
+    test: Annotated[
+        list[str] | None,
+        Parameter(
+            ["--test"],
+            help="Resolve only these titles and print -vv results without writing a PDF. Repeatable; '.' or '' means every title.",
+        ),
+    ] = None,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
@@ -70,6 +77,7 @@ def render_command(
         part or None,
         level,
         explicit_bookmark_hierarchy=explicit_bookmark_hierarchy,
+        test=test,
     )
 
 
