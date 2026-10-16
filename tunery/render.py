@@ -115,6 +115,8 @@ def lexical_absolute(path: Path) -> Path:
 
 
 RHYTHM_SECTION = ["Piano", "Guitar", "Bass", "Drums"]
+# Part bookmarks under a title, for readers that show only one bookmark level.
+PART_BOOKMARK_PREFIX = "_ "
 RHYTHM_SECTION_NAMES = {"rs": "RS", "rhythm": "Rhythm", "rhythm section": "Rhythm Section"}
 
 
@@ -289,6 +291,7 @@ def process_file_entry(
     key: str = CONCERT_KEY,
     part: str | list[str] = "Concert",
     verbose: int = 0,
+    part_prefix: str = "",
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
@@ -443,7 +446,7 @@ def process_file_entry(
         page = entry.page if entry.page is not None else hit.match.page
         length = entry.length if entry.length is not None else hit.match.length
         entry_page = composer.add(
-            title=hit.label,
+            title=f"{part_prefix}{hit.label}",
             source=hit.match.source,
             start=page,
             pages=length,
@@ -471,12 +474,23 @@ def process_items(
     show_key: bool,
     part: str | list[str] = "Concert",
     verbose: int = 0,
+    part_prefix: str = "",
 ) -> None:
     """Process layout items recursively for one key edition."""
     for item in items:
         if isinstance(item, SectionEntry):
             composer.start_section(item.section)
-            process_items(item.body, default_dir, composer, libraries, key, show_key, part, verbose)
+            process_items(
+                item.body,
+                default_dir,
+                composer,
+                libraries,
+                key,
+                show_key,
+                part,
+                verbose,
+                part_prefix,
+            )
             composer.end_section()
         else:
             result = process_file_entry(
@@ -487,6 +501,7 @@ def process_items(
                 key,
                 part,
                 verbose,
+                part_prefix,
             )
             if show_key:
                 print(f"[{key}] {result.format()}")
@@ -501,6 +516,7 @@ def render(
     base: Path | None = None,
     part: str | list[str] | None = None,
     verbose: int = 0,
+    explicit_bookmark_hierarchy: bool = False,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -558,7 +574,15 @@ def render(
             key_output = output_path_for_key(part_output, key)
             with Composer(key_output, autosave=False) as composer:
                 process_items(
-                    layout_entries, default_dir, composer, libraries, key, show_key, subparts, verbose
+                    layout_entries,
+                    default_dir,
+                    composer,
+                    libraries,
+                    key,
+                    show_key,
+                    subparts,
+                    verbose,
+                    PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
                 )
                 composer.save()
 

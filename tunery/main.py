@@ -58,11 +58,27 @@ def render_command(
             help="Increase verbosity (-v level 1, -vv level 2).",
         ),
     ] = 0,
+    explicit_bookmark_hierarchy: Annotated[
+        bool,
+        Parameter(
+            ["--explicit-bookmark-hierarchy"],
+            negative=(),
+            help='Prefix part bookmarks with "_ " for readers that show one bookmark level.',
+        ),
+    ] = False,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
     level = max(verbose, v)
-    render(layout, output_path, keys or [], base, part or None, level)
+    render(
+        layout,
+        output_path,
+        keys or [],
+        base,
+        part or None,
+        level,
+        explicit_bookmark_hierarchy=explicit_bookmark_hierarchy,
+    )
 
 
 @app.command(name="lookup")

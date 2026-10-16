@@ -14,8 +14,11 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
+        explicit_bookmark_hierarchy: bool = False,
     ):
-        calls.append((layout, output, keys, base, part, verbose))
+        calls.append(
+            (layout, output, keys, base, part, verbose, explicit_bookmark_hierarchy)
+        )
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -29,6 +32,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             None,
             None,
             0,
+            False,
         )
     ]
 
@@ -43,8 +47,11 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
+        explicit_bookmark_hierarchy: bool = False,
     ):
-        calls.append((layout, output, keys, base, part, verbose))
+        calls.append(
+            (layout, output, keys, base, part, verbose, explicit_bookmark_hierarchy)
+        )
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -67,6 +74,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "-v",
             "--verbose",
             "1",
+            "--explicit-bookmark-hierarchy",
         ]
     )
 
@@ -78,6 +86,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             Path("proj"),
             ["Piano", "Bass,Piano"],
             1,
+            True,
         )
     ]
 

@@ -100,3 +100,16 @@ def test_rhythm_expands_inside_comma_list(tmp_path: Path) -> None:
         assert outline_titles(pdf) == [
             ("Mo Better Blues", ["Trumpet", "Tenor Sax", "Rhythm", "Bass", "Drums"])
         ]
+
+
+def test_explicit_bookmark_hierarchy_prefixes_parts(tmp_path: Path) -> None:
+    make_rs_fixture(tmp_path)
+    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Mo Better Blues"}, {"title": "Ballad"}])
+
+    render(layout, tmp_path / "book.pdf", part=["RS"], explicit_bookmark_hierarchy=True)
+
+    with pikepdf.Pdf.open(tmp_path / "book.RS.pdf") as pdf:
+        assert outline_titles(pdf) == [
+            ("Mo Better Blues", ["_ Rhythm", "_ Bass", "_ Drums"]),
+            ("Ballad", []),
+        ]

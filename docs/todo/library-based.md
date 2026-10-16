@@ -564,7 +564,7 @@ reads the real libraries.
   Tests: Norwegian Wood `{Tenor Sax: Horn 1}` under `norm`; Funk in Deep
   Freeze `{Tenor Sax: Flute}`; I Love Lucy `tag: v2` → `Tenor Sax.v2`;
   an unknown name in `--part` is a visible error.
-- **LIB5.7** `--explicit-bookmark-hierarchy` prefixes part bookmarks with
+- [x] **LIB5.7** `--explicit-bookmark-hierarchy` prefixes part bookmarks with
   `_ `. Test: `_ Bass` under Mo' Better Blues.
 - **LIB5.8** File-system view (Concepts, Configuration):
   - the base is `--base` or `$PWD`, and relative command-line paths join it;
