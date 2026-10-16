@@ -24,7 +24,7 @@ from tunery.library import (
     load_project_libraries,
     logical_cwd,
 )
-from tunery.parts import canonical_part_name, is_known_part, normalize_text
+from tunery.parts import canonical_part_name, normalize_text, parse_part_name
 
 
 class FileEntry(BaseModel):
@@ -118,12 +118,7 @@ def _expand_part(raw: str, named: dict[str, str]) -> tuple[str, list[str]]:
         return raw.strip(), list(dict.fromkeys(members))
     if norm in RHYTHM_SECTION_NAMES:
         return RHYTHM_SECTION_NAMES[norm], RHYTHM_SECTION
-    if not is_known_part(raw):
-        raise ValueError(
-            f'Unknown part "{raw.strip()}": not an instrument, group or kind, '
-            "and not named in the layout config"
-        )
-    canon = canonical_part_name(raw)
+    canon = parse_part_name(raw)
     return canon, [canon]
 
 
@@ -305,7 +300,7 @@ def select_and_add(
     chart flat under the title, several nested under a title bookmark."""
     if entry.part:
         mapping = {
-            canonical_part_name(asked): canonical_part_name(used)
+            parse_part_name(asked, title): parse_part_name(used, title)
             for asked, used in entry.part.items()
         }
         subparts = list(dict.fromkeys(mapping.get(p, p) for p in subparts))

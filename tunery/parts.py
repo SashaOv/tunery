@@ -674,6 +674,21 @@ def is_known_part(requested: str) -> bool:
     )
 
 
+def parse_part_name(raw: str, title: str | None = None) -> str:
+    """Validate a part name from `--part`, a named-part definition or a chart
+    mapping (keys and values), and return its canonical form.
+
+    Unknown names are an error naming the value and, for a chart, its title.
+    """
+    if is_known_part(raw):
+        return canonical_part_name(raw)
+    where = f' for "{title}"' if title is not None else ""
+    raise ValueError(
+        f'Unknown part "{raw.strip()}"{where}: not an instrument, group or kind, '
+        "and not named in the layout config"
+    )
+
+
 @dataclass
 class TitleCandidate:
     remainder: str

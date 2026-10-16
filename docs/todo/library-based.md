@@ -789,7 +789,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   `<Title>.<K>.pdf` suffix lookups in `DirectoryLibrary`, per-key output
   naming and `[Key]` prefixes. Retire `docs/todo/keys.md`. Tests: `-k` is
   rejected by the CLI; `--part Bb` still renders a Bb book.
-- **LIB6.2** One part-name parser in `tunery/parts.py`, used by `--part`,
+- [x] **LIB6.2** One part-name parser in `tunery/parts.py`, used by `--part`,
   named-part definitions and chart mappings (keys and values). An unknown
   name is an error that names the value and, for a chart, its title.
   Tests: `{Tenor Sax: Fluet}`, `{Tenor Saxx: Flute}` and `full: Tenor Sx`

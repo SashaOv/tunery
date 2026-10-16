@@ -91,3 +91,43 @@ def test_unknown_part_name_is_an_error(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match='Unknown part "nrom"'):
         render(layout, tmp_path / "show.pdf", part=["nrom"])
+
+
+def test_chart_part_mapping_unknown_value_is_an_error(tmp_path: Path) -> None:
+    layout = make_show(
+        tmp_path, [{"title": "Norwegian Wood", "part": {"Tenor Sax": "Fluet"}}]
+    )
+
+    with pytest.raises(ValueError, match='Unknown part "Fluet" for "Norwegian Wood"'):
+        render(layout, tmp_path / "show.pdf", part=["norm"])
+
+
+def test_chart_part_mapping_unknown_key_is_an_error(tmp_path: Path) -> None:
+    layout = make_show(
+        tmp_path, [{"title": "Norwegian Wood", "part": {"Tenor Saxx": "Flute"}}]
+    )
+
+    with pytest.raises(ValueError, match='Unknown part "Tenor Saxx" for "Norwegian Wood"'):
+        render(layout, tmp_path / "show.pdf", part=["norm"])
+
+
+def test_named_part_definition_unknown_member_is_an_error(tmp_path: Path) -> None:
+    create_pdfs(tmp_path / "SheetMusic", SHEET_MUSIC)
+    (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
+    config = {"config": [{"part": {"full": "Tenor Sx"}}]}
+    layout = write_layout(
+        tmp_path / "show.yaml", [config, {"title": "Funk In Deep Freeze"}]
+    )
+
+    with pytest.raises(ValueError, match='Unknown part "Tenor Sx"'):
+        render(layout, tmp_path / "show.pdf", part=["full"])
+
+
+def test_known_aliases_pass(tmp_path: Path) -> None:
+    layout = make_show(tmp_path, [{"title": "Funk In Deep Freeze"}])
+
+    render(layout, tmp_path / "show.pdf", part=["Tenor"])
+    assert (tmp_path / "show.Tenor Sax.pdf").exists()
+
+    render(layout, tmp_path / "show.pdf", part=["rs"])
+    assert (tmp_path / "show.RS.pdf").exists()
