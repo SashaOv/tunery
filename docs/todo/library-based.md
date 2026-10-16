@@ -173,6 +173,9 @@ structure on top. `file:` layouts keep working unchanged.
   several values (author, 2026-10-15).
   Which instrument reads `Horn 1`/`Horn 2` is decided only here; no rule
   guesses it.
+  A mapping key may also name a book from the layout's `part:` config
+  (`parts: {norm: Flute}`): it replaces the title's parts when rendering
+  that book and is ignored elsewhere. Part keys apply in every book.
 - **Substitution chains:**
   - Instrument N → Instrument → section → group → Concert.
   - Piano → Rhythm → Concert.
@@ -794,7 +797,7 @@ Configuration) and adds tests. Fixtures are blank PDFs under `tmp_path`.
   name is an error that names the value and, for a chart, its title.
   Tests: `{Tenor Sax: Fluet}`, `{Tenor Saxx: Flute}` and `full: Tenor Sx`
   are errors; known aliases (`Tenor`, `rs`) pass.
-- **LIB6.3** Chart mappings keyed by a named part: `parts: {norm: Flute}`
+- [x] **LIB6.3** Chart mappings keyed by a named part: `parts: {norm: Flute}`
   replaces the title's parts when rendering `norm` and leaves other books
   alone; part keys (`Tenor Sax: Horn 1`) apply in every book as today.
   Test: Funk in Deep Freeze is Flute in `norm` and Tenor in `full`.

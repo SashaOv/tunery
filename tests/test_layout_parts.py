@@ -131,3 +131,25 @@ def test_known_aliases_pass(tmp_path: Path) -> None:
 
     render(layout, tmp_path / "show.pdf", part=["rs"])
     assert (tmp_path / "show.RS.pdf").exists()
+
+
+def test_named_book_mapping_applies_only_in_that_book(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(tmp_path / "SheetMusic", SHEET_MUSIC)
+    (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
+    config = {
+        "config": [{"part": {"norm": "Tenor Sax", "full": "Tenor Sax"}}]
+    }
+    chart = {"title": "Funk In Deep Freeze", "parts": {"norm": "Flute"}}
+    layout = write_layout(tmp_path / "show.yaml", [config, chart])
+
+    render(layout, tmp_path / "show.pdf", part=["norm"], verbose=1)
+    assert '"Funk In Deep Freeze" Flute: Funk In Deep Freeze - Flute.pdf' in (
+        capsys.readouterr().out
+    )
+
+    render(layout, tmp_path / "show.pdf", part=["full"], verbose=1)
+    out = capsys.readouterr().out
+    assert '"Funk In Deep Freeze" Tenor Sax: Funk In Deep Freeze - Tenor.pdf' in out
+    assert "Flute" not in out

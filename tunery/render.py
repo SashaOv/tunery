@@ -226,6 +226,8 @@ def process_file_entry(
     part: str | list[str] = "Concert",
     verbose: int = 0,
     part_prefix: str = "",
+    book: str | None = None,
+    named: dict[str, str] | None = None,
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
@@ -253,6 +255,8 @@ def process_file_entry(
                 composer,
                 verbose,
                 part_prefix,
+                book,
+                named,
             )
         if folder.suffix.lower() != ".pdf" and not folder.exists():
             raise ValueError(f"Score folder not found: {folder}")
@@ -284,7 +288,9 @@ def process_file_entry(
     title = entry.title
     if libraries is None:
         return NotFoundResult(title=title)
-    return select_and_add(title, entry, libraries, subparts, composer, verbose, part_prefix)
+    return select_and_add(
+        title, entry, libraries, subparts, composer, verbose, part_prefix, book, named
+    )
 
 
 def select_and_add(
@@ -295,15 +301,26 @@ def select_and_add(
     composer: Composer,
     verbose: int,
     part_prefix: str,
+    book: str | None = None,
+    named: dict[str, str] | None = None,
 ) -> ProcessEntryResult:
     """Choose the title's charts for the requested parts and add them: one
     chart flat under the title, several nested under a title bookmark."""
     if entry.part:
-        mapping = {
-            parse_part_name(asked, title): parse_part_name(used, title)
-            for asked, used in entry.part.items()
-        }
-        subparts = list(dict.fromkeys(mapping.get(p, p) for p in subparts))
+        names = {normalize_text(name) for name in (named or {})}
+        this_book = normalize_text(book) if book else None
+        part_map: dict[str, str] = {}
+        replaced = False
+        for asked, used in entry.part.items():
+            if normalize_text(asked) in names:
+                if normalize_text(asked) == this_book:
+                    subparts = [parse_part_name(used, title)]
+                    replaced = True
+                    break
+                continue
+            part_map[parse_part_name(asked, title)] = parse_part_name(used, title)
+        if not replaced:
+            subparts = list(dict.fromkeys(part_map.get(p, p) for p in subparts))
     selection = libraries.select_parts(title, subparts, entry.key, entry.tag)
     if selection is None:
         return NotFoundResult(title=title)
@@ -378,6 +395,8 @@ def process_items(
     part: str | list[str] = "Concert",
     verbose: int = 0,
     part_prefix: str = "",
+    book: str | None = None,
+    named: dict[str, str] | None = None,
 ) -> None:
     """Process layout items recursively for one setbook."""
     for item in items:
@@ -391,6 +410,8 @@ def process_items(
                 part,
                 verbose,
                 part_prefix,
+                book,
+                named,
             )
             composer.end_section()
         else:
@@ -402,6 +423,8 @@ def process_items(
                 part,
                 verbose,
                 part_prefix,
+                book,
+                named,
             )
             print(result.format())
 
@@ -479,6 +502,8 @@ def render(
                 subparts,
                 verbose,
                 PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
+                label,
+                named_parts,
             )
             composer.save()
 
