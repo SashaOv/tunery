@@ -1185,7 +1185,7 @@ Logs: scratchpad `acceptance-LIB7/`.
 
 ### LIB8: Big-band names read by rule: score keys, title initials, shortened titles
 
-Status: planned, approved 2026-10-16 (LIB8.5 added by the author, same day)
+Status: executed, pending author verification
 
 **Improvement:** the last three big-band naming gaps a real setlist hits
 are closed by rules, not by data workarounds:
@@ -1278,6 +1278,45 @@ one entry).
 - *Live regression:* the LIB6 Crosswinds `--test .` runs (concert, norm,
   full, rs) and JBM `--part Rhythm --test .` give the same picks.
 - *Open if not observed:* name each clause not run, with what it takes.
+
+**Acceptance run 2026-10-16** on commit `1cc9d70`, tree
+`2089614ca45a488c2ceb5609104cc8140242df19`, `build.py`
+`271077b9ddbc91ea2d7ae4687ead21ac524761dc` (clean). Environment:
+Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs:
+`/tmp/acceptance-LIB8/` (outside the repo).
+
+- Gate: `uv run build.py gate` clean; 199 passed.
+- Live, from `/Users/sasha/personal/wip/apps/SOJ/cache`. Scratchpad layouts
+  keep each hand layout's titles and sections and point `config:` at
+  `GDrive/MasterList/tunery.yaml`. The Drive index's Sweet Home Chicago
+  line has no `file:` (`Sweet Home Chicago.Bb.pdf` is not in that file).
+  - 26-07-09 bass: 15/15, 28 pages; Sweet Home Chicago is
+    `Sweet Home Chicago.Bb.pdf`, page 27.
+  - 26-08-07 bass: 21/21, 44 pages; the same Sweet Home file, page 27.
+  - 26-07-09 piano: 15/15, 45 pages; the same file, page 29.
+  - 26-09-12 bass: Fly Me To The Moon takes `fmttmbass.pdf`; I'm Gonna Sit
+    Right Down warns `matched "I'm Gonna Sit Right Down" to "I’m Gonna Sit
+    Right Down and Write Myself a Letter"` and reports `missing Bass`;
+    16 titles found, 9 `missing Bass` (Swingin' Shepard Blues, A Day in the
+    Life of a Fool, Groovin' Easy, I Just Found Out About Love, New York
+    New York, When I Fall in Love, What I Did For Love, It's Oh, So Nice,
+    plus Sit Right Down). The book is 33 pages.
+- Live JBM, scratchpad `config:` is
+  `/Users/sasha/personal/wip/apps/JBM/tunery.yaml`, `--part Piano --test
+  "All of Me"`: `path: Vocals` takes
+  `Vocals/All Of Me/All of Me (Vocal)-Piano.pdf`; without `path:` it takes
+  `Tunes for Michelle/All of Me (Vocal)-Piano.pdf`. Both warn the other copy.
+- Live regression, exit 0, no PDF written:
+  - Crosswinds `--test .` from `/Users/sasha/personal/crosswinds`: concert
+    23 found, Recado takes `- Rhythm` over the real book, Poinciana takes
+    `_Petes`' concert chart; norm 23 found, Poinciana's Tenor takes that
+    concert chart; full adds Cape Verdean's `.Bb` and `.pdf` (warned) and
+    Funk has no Flute (Concert is the Rhythm Section chart), Poinciana's
+    Trumpet and Tenor take the `_Petes` concert chart; rs keeps Norwegian
+    Wood's `Piano:Guitar`.
+  - JBM `--part Rhythm --test .`: 21 found (15 Vault, 6 real-book), plus
+    `not found "It Don't Mean Thing"`.
+- No code fixes were needed; nothing from the run is left uncommitted.
 
 **Author action required at completion:**
 
