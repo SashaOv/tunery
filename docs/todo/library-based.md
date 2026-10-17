@@ -101,6 +101,15 @@ structure on top. `file:` layouts keep working unchanged.
   interpreted as tags. That is why `Partido Alto` keeps "Alto" and
   `Fascinating Rhythm` keeps "Rhythm". When only the folder matches, the
   stem's tags are read right to left up to the first word that isn't a tag.
+- **Shortened title:** when no name text matches, a file name that starts
+  with the title and continues with more words is the title's file, if it
+  is the only such name. The match is warned (`matched "<title>" to
+  "<name>"`; `<name>` is the stem, apostrophes as written). The extra words
+  are the rest of the title, not tags, so the file is that title's untagged
+  chart. Two or more such names are not the title (`several names start
+  with "<title>": "<name>", "<name>"`, alphabetical), and the title is not
+  found. A title that already has a candidate does not take a longer name
+  (`Morning` with its own files does not claim `Morning Dance`).
 - **Rules:** the tag text is read right to left. At each position the
   longest span wins, then rule priority (first-match; no whole-name
   scoring). Priorities live in `RULES` in `tunery/parts.py`: rule →
@@ -1208,12 +1217,13 @@ PDFs under `tmp_path`, names copied from the libraries).
   - `fmttmpno1` is Piano with a page number;
   - a combo folder whose initials happen to prefix a name is not affected
     (`Ode/Ode.bass` stays as today).
-- **LIB8.4** Shortened titles: when a title finds no candidate, a name in
+- [x] **LIB8.4** Shortened titles: when a title finds no candidate, a name in
   the library that starts with the title, followed by more words, is the
   title's file. It must be the only such name, and it is warned
   (`matched "I'm Gonna Sit Right Down" to "I’m Gonna Sit Right Down and Write
   Myself a Letter"`). Two such names → not found, and the warning lists
-  them.
+  them (`several names start with "<title>": "<name>", "<name>"`,
+  alphabetical).
   Tests:
   - I'm Gonna Sit Right Down finds its file;
   - `Morning` still doesn't claim `Morning Dance` when `Morning` has its own

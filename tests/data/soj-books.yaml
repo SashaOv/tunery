@@ -157,7 +157,9 @@ bass-26-09-12:
     L-O-V-E: {file: "L-O-V-E-Gabler.pdf", page: 47, length: 3}
     You Go To My Head: {file: "You Go to My Head-Dedrick.pdf", page: 3, length: 2}
   # Titles without an index entry: matched files exist but no part matches.
+  # I'm Gonna Sit Right Down is the shortened file name, then missing Bass.
   missing:
+  - I'm Gonna Sit Right Down
   - Swingin' Shepard Blues, The
   - A Day in the Life of a Fool
   - Groovin' Easy
@@ -166,6 +168,3 @@ bass-26-09-12:
   - When I Fall in Love
   - What I Did For Love
   - It's Oh, So Nice
-  # Matched by no file at all (the layout title is a prefix of the file).
-  not_found:
-  - I'm Gonna Sit Right Down

@@ -697,6 +697,18 @@ def match_prefix_boundary(layout_title: str, name_text: str) -> tuple[str, bool,
     return (rest_original.strip(), is_hard, has_parens)
 
 
+def longer_title_name(title: str, name: str) -> bool:
+    """True when `name` starts with `title` and continues with more words.
+
+    The extra words are the rest of a shortened title, not tags
+    (`I'm Gonna Sit Right Down` → `…and Write Myself a Letter`).
+    """
+    hit = match_prefix_boundary(title, name)
+    if hit is None:
+        return False
+    return bool(normalize_text(hit[0]).split())
+
+
 @dataclass
 class ItemInfo:
     stem: str

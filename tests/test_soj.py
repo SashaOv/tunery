@@ -178,11 +178,14 @@ def test_26_09_12_bass_16_of_25(show: Path, capsys) -> None:
                 check_pick(show, book, title, hand)
     for title in BOOKS[book]["missing"]:
         assert out.count(f'missing Bass for "{title}"') == 1, title
-    for title in BOOKS[book]["not_found"]:
+    not_found = BOOKS[book].get("not_found", [])
+    for title in not_found:
         assert f'not found "{title}"' in out, title
         assert f'missing Bass for "{title}"' not in out, title
+    assert (
+        'matched "I\'m Gonna Sit Right Down" to '
+        '"I\u2019m Gonna Sit Right Down and Write Myself a Letter"'
+    ) in out
     assert out.count("missing Bass") == len(BOOKS[book]["missing"])
-    assert out.count("not found") == len(BOOKS[book]["missing"]) + len(
-        BOOKS[book]["not_found"]
-    )
+    assert out.count("not found") == len(BOOKS[book]["missing"]) + len(not_found)
     assert [title for title, _ in spans(pdf)] == list(charts)

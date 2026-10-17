@@ -87,6 +87,69 @@ def test_fly_me_bass_prefers_unnumbered_initials(
     assert "missing Bass" not in out
 
 
+def test_shortened_title_matches_the_one_longer_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    letter = "I\u2019m Gonna Sit Right Down and Write Myself a Letter.pdf"
+    create_pdf(tmp_path / "MasterList" / letter)
+    (tmp_path / "tunery.yaml").write_text("- library: MasterList\n  type: big band\n")
+    layout = write_layout(
+        tmp_path / "show.yaml", [{"title": "I'm Gonna Sit Right Down"}]
+    )
+
+    render(layout, tmp_path / "show.pdf", part=["Bass"], verbose=2)
+
+    out = capsys.readouterr().out
+    assert (
+        'matched "I\'m Gonna Sit Right Down" to '
+        '"I\u2019m Gonna Sit Right Down and Write Myself a Letter"'
+    ) in out
+    assert f"{letter}): part=Score" in out
+    assert 'missing Bass for "I\'m Gonna Sit Right Down"' in out
+
+
+def test_morning_with_files_does_not_claim_morning_dance(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(tmp_path / "Charts", ["Morning.pdf", "Morning Dance.pdf"])
+    (tmp_path / "tunery.yaml").write_text("- library: Charts\n")
+    layout = write_layout(tmp_path / "show.yaml", [{"title": "Morning"}])
+
+    render(layout, tmp_path / "show.pdf", part=["Concert"], verbose=2)
+
+    out = capsys.readouterr().out
+    assert '"Morning" Concert: Morning.pdf' in out
+    assert "Morning Dance" not in out
+    assert "matched" not in out
+
+
+def test_two_longer_names_are_not_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(
+        tmp_path / "MasterList",
+        [
+            "I\u2019m Gonna Sit Right Down and Cry.pdf",
+            "I\u2019m Gonna Sit Right Down and Write Myself a Letter.pdf",
+        ],
+    )
+    (tmp_path / "tunery.yaml").write_text("- library: MasterList\n  type: big band\n")
+    layout = write_layout(
+        tmp_path / "show.yaml", [{"title": "I'm Gonna Sit Right Down"}]
+    )
+
+    render(layout, tmp_path / "show.pdf", part=["Bass"], verbose=2)
+
+    out = capsys.readouterr().out
+    assert (
+        'several names start with "I\'m Gonna Sit Right Down": '
+        '"I\u2019m Gonna Sit Right Down and Cry", '
+        '"I\u2019m Gonna Sit Right Down and Write Myself a Letter"'
+    ) in out
+    assert 'not found "I\'m Gonna Sit Right Down"' in out
+    assert "missing" not in out
+
+
 def test_sweet_home_chicago_bb_is_jumbo_with_score_key(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

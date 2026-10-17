@@ -16,6 +16,7 @@ from tunery.parts import (
     chain_for_part,
     fuzzy_title_prefix,
     interpret_filename,
+    longer_title_name,
     match_candidate,
     normalize_score_key,
     normalize_text,
@@ -295,19 +296,25 @@ class DirectoryLibrary:
     ) -> TitleSelection | None:
         """Choose a chart for each requested part of a title.
 
-        Returns None when the library has no candidate for the title. Each
-        part takes the best rank where any source (folder) has a candidate.
+        Returns None when the library has no candidate for the title. One
+        longer name is that title's file and is warned; several longer names
+        leave the title not found and name them. Each part takes the best
+        rank where any source (folder) has a candidate.
         Among those: candidates carrying all `tags`, then the fewest
         substitution steps, then the title's top source, then the fewest
         extra words, then path order. A part mapped by the chart's `part:`
         is requested as such, so the mapping is not a substitution. One warning per title reports several
         candidates for a part, or charts from more than one folder.
         """
-        cands = self.all_candidates(title)
+        cands, name_warnings = self._titled_candidates(title)
         indexed, index_warnings = self.index_candidates(title, cands)
         cands = [*cands, *indexed]
-        warnings: list[str] = [*index_warnings]
+        warnings: list[str] = [*name_warnings, *index_warnings]
         if not cands:
+            # Several longer names are not this title: say so, and do not
+            # report every requested part as missing.
+            if name_warnings and not index_warnings:
+                return TitleSelection([], [], warnings)
             return None if not warnings else TitleSelection([], list(parts), warnings)
         if score_key is not None:
             try:
@@ -455,11 +462,57 @@ class DirectoryLibrary:
         return pairs, warnings
 
     def all_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
-        """All title-matching candidates with interpretation, path order.
+        """All title-matching candidates with interpretation, path order."""
+        cands, _warnings = self._titled_candidates(title)
+        return cands
 
-        Exact prefix matches first; for fuzzy libraries with none, match the
-        title against word prefixes of each name text and interpret what
-        follows the matched prefix as tags.
+    def _titled_candidates(
+        self, title: str
+    ) -> tuple[list[tuple[Path, TitleCandidate]], list[str]]:
+        """Ordinary candidates, or one longer file name when that is all.
+
+        A file whose name starts with the title and continues with more
+        words is the title's file only when no ordinary candidate exists and
+        that name is the only one. The extra words stay part of the title,
+        so the file is the title's untagged chart. Several such names match
+        nothing and are listed.
+        """
+        ordinary = self._ordinary_candidates(title)
+        if ordinary:
+            return ordinary, []
+        groups = self._longer_file_names(title)
+        if not groups:
+            return [], []
+        if len(groups) > 1:
+            listed = ", ".join(f'"{name}"' for name in sorted(groups))
+            return [], [f'several names start with "{title}": {listed}']
+        name, items = next(iter(groups.items()))
+        cands = [
+            (path, cand)
+            for path, folder in items
+            if (cand := match_candidate(title, title, folder, self.library_type))
+            is not None
+        ]
+        if not cands:
+            return [], []
+        return cands, [f'matched "{title}" to "{name}"']
+
+    def _longer_file_names(
+        self, title: str
+    ) -> dict[str, list[tuple[Path, str | None]]]:
+        """File stems that start with `title` plus more words, path order."""
+        groups: dict[str, list[tuple[Path, str | None]]] = {}
+        for pdf_path, folder in self._items:
+            stem = pdf_path.stem
+            if longer_title_name(title, stem):
+                groups.setdefault(stem, []).append((pdf_path, folder))
+        return groups
+
+    def _ordinary_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
+        """Exact prefix matches, then fuzzy word prefixes when the library
+        asks for them and nothing matched exactly.
+
+        What follows the matched prefix is tags.
         """
         out: list[tuple[Path, TitleCandidate]] = []
         for pdf_path, folder in self._items:
@@ -487,6 +540,11 @@ class DirectoryLibrary:
 class ScoreFolder(DirectoryLibrary):
     """A chart's `file:` folder: every PDF below it belongs to the chart's
     title, so a name that doesn't match the title is read whole as tags."""
+
+    def _titled_candidates(
+        self, title: str
+    ) -> tuple[list[tuple[Path, TitleCandidate]], list[str]]:
+        return self.all_candidates(title), []
 
     def all_candidates(self, title: str) -> list[tuple[Path, TitleCandidate]]:
         return [
