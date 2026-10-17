@@ -21,6 +21,7 @@ from tunery.parts import (
     normalize_text,
     parse_part_name,
     rank_chain,
+    rule_priority,
     stem_candidate,
 )
 
@@ -413,9 +414,13 @@ class DirectoryLibrary:
                 source = resolved.resolve()
                 base = interpret_filename(source.stem)
             else:
-                jumbos = sorted(
-                    {str(p) for p, c in cands if c.part == BIG_BAND_DEFAULT_PART},
-                ) if self.library_type == "big band" else []
+                jumbos = (
+                    sorted(
+                        {str(p) for p, c in cands if c.part == BIG_BAND_DEFAULT_PART},
+                    )
+                    if rule_priority("jumbo default", self.library_type) > 0
+                    else []
+                )
                 if len(jumbos) != 1:
                     warnings.append(
                         f'no jumbo file for "{title}"'

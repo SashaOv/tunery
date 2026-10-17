@@ -1,6 +1,6 @@
-"""Interpret combo library file/folder names into parts and variations.
+"""Interpret library file and folder names into parts and variations.
 
-Combo profile only (big-band rules disabled). See docs/todo/library-based.md.
+Rule priorities per library type live in `RULES`. See docs/todo/library-based.md.
 """
 
 from __future__ import annotations
@@ -249,6 +249,63 @@ class InterpretedTags:
 # no single instrument.
 _CONDUCTOR_NAMES = {"conductor", "score", "condensed score"}
 
+# Bare Bb/Eb name a group in combo. In big band the group rule is off for
+# them and they are the score key (Sweet Home Chicago.Bb).
+_BARE_SCORE_KEYS = {"bb": "Bb", "eb": "Eb"}
+
+# Priority per library type. 0 disables the rule. Within one span, higher
+# is tried first; equal priority follows this order. The longest span still
+# wins over a higher-priority shorter span. Rows without a span matcher
+# (jumbo default, and the rest of the big-band profile) are declared here
+# and consulted only where a matcher exists.
+RULES: dict[str, dict[str, int]] = {
+    "explicit score key": {"combo": 1, "big band": 1},
+    "instrument": {"combo": 1, "big band": 1},
+    "group": {"combo": 2, "big band": 1},
+    "bare score key": {"combo": 0, "big band": 1},
+    "conductor": {"combo": 0, "big band": 1},
+    "kind": {"combo": 1, "big band": 1},
+    "page split": {"combo": 1, "big band": 1},
+    "noise": {"combo": 1, "big band": 1},
+    "version": {"combo": 1, "big band": 1},
+    "moved article": {"combo": 1, "big band": 1},
+    "jumbo default": {"combo": 0, "big band": 1},
+    "trailing key": {"combo": 0, "big band": 1},
+    "big-band instruments": {"combo": 0, "big band": 1},
+    "arranger": {"combo": 0, "big band": 1},
+    "arrangement version": {"combo": 0, "big band": 1},
+}
+
+_RULE_INDEX = {name: index for index, name in enumerate(RULES)}
+
+# Tag-span matchers. The other rows are profile declarations: jumbo default
+# is applied when choosing the part, and the rest have no matcher yet.
+_SPAN_MATCHERS = frozenset({
+    "explicit score key",
+    "instrument",
+    "group",
+    "bare score key",
+    "conductor",
+    "kind",
+    "page split",
+    "noise",
+    "version",
+})
+
+
+def rule_priority(rule: str, library_type: str) -> int:
+    """Priority of a naming rule for a library type; 0 disables it."""
+    return RULES[rule][library_type]
+
+
+def _span_rules(library_type: str) -> list[str]:
+    """Enabled span matchers, highest priority first, table order on ties."""
+    ranked = sorted(
+        (name for name in RULES if name in _SPAN_MATCHERS),
+        key=lambda name: (-RULES[name][library_type], _RULE_INDEX[name]),
+    )
+    return [name for name in ranked if RULES[name][library_type] > 0]
+
 
 def _tokenize_tag_text(tag_text: str) -> list[str]:
     # Split on hard boundaries: ' - ', '-', '.', ',', '(', ')', '[', ']', ':', '/', '+', '&', '|'
@@ -261,10 +318,11 @@ def _tokenize_tag_text(tag_text: str) -> list[str]:
 def interpret_remainder(
     tag_text: str, allow_dual: bool = True, library_type: str = "combo"
 ) -> InterpretedTags:
-    """Interpret tag text right to left, longest span wins.
+    """Interpret tag text right to left. The longest span wins, then priority.
 
-    Combo is the default profile. In a big-band library a conductor score
-    (`conductor`, `score`, `condensed score`) is a part of its own, and an
+    `RULES` gives each rule's priority for `library_type`; 0 skips the rule.
+    A bare Bb or Eb is a group part in combo and the score key in big band.
+    In a big-band library a conductor score is a part of its own, and an
     untagged remainder defaults to the full score instead of Concert.
     """
     tokens = _tokenize_tag_text(tag_text)
@@ -299,187 +357,176 @@ def interpret_remainder(
                 rules_fired=["dual-instrument"],
             )
 
-    i = n - 1
-    while i >= 0:
-        if consumed[i]:
-            i -= 1
-            continue
-        # Try spans ending at i, longest first, up to 3 words.
-        matched = False
-        for span in (3, 2, 1):
-            start = i - span + 1
-            if start < 0:
-                continue
-            if any(consumed[start : i + 1]):
-                continue
-            phrase = " ".join(tokens[start : i + 1])
-            # Explicit score key: concert <key>
+    span_rules = _span_rules(library_type)
+    bare_key_on = rule_priority("bare score key", library_type) > 0
+
+    def take(start: int, end: int) -> None:
+        for k in range(start, end + 1):
+            consumed[k] = True
+
+    def apply(rule: str, span: int, start: int) -> bool:
+        """Match one rule on the span ending at i and record the hit."""
+        nonlocal score_key, score_mode
+        phrase = " ".join(tokens[start : i + 1])
+        tok = tokens[i]
+        if rule == "explicit score key":
             if span == 2 and tokens[start] == "concert":
                 key = _parse_key_token(tokens[i])
                 if key:
                     score_key = key
                     rules_fired.append(f"explicit score key: {phrase}")
-                    for k in range(start, i + 1):
-                        consumed[k] = True
-                    matched = True
-                    break
-            # Explicit: in <key>
+                    take(start, i)
+                    return True
             if span == 2 and tokens[start] == "in":
                 key = _parse_key_token(tokens[i])
                 if key:
                     score_key = key
                     rules_fired.append(f"explicit score key: {phrase}")
-                    for k in range(start, i + 1):
-                        consumed[k] = True
-                    matched = True
-                    break
-            # Explicit: <key> major/minor
+                    take(start, i)
+                    return True
             if span == 2 and tokens[i] in ("major", "minor"):
                 key = _parse_key_token(tokens[start])
                 if key:
                     score_key = key
                     score_mode = tokens[i]
                     rules_fired.append(f"explicit score key: {phrase}")
-                    for k in range(start, i + 1):
-                        consumed[k] = True
-                    matched = True
-                    break
-            # Explicit: <key>m (e.g. gm, cm) single token ending with m
-            if span == 1 and len(tokens[i]) >= 2 and tokens[i].endswith("m"):
-                base = tokens[i][:-1]
+                    take(start, i)
+                    return True
+            # <key>m (gm, cm). "drm" is not a key base, so drums stay drums.
+            if span == 1 and len(tok) >= 2 and tok.endswith("m"):
+                base = tok[:-1]
                 key = _parse_key_token(base)
-                # Avoid clashing with drum alias etc. (drm not a key base)
                 if key and base in _VALID_KEYS or base in ("g", "c", "d", "a", "e", "b"):
                     score_key = key
                     score_mode = "minor"
                     rules_fired.append(f"explicit score key: {phrase}")
                     consumed[i] = True
-                    matched = True
-                    break
-            # Page split two-word: pg N / page N
-            if span == 2 and tokens[start] in ("pg", "p", "page") and re.fullmatch(r"\d{1,3}", tokens[i]):
-                rules_fired.append(f"page split: {phrase}")
-                for k in range(start, i + 1):
-                    consumed[k] = True
-                matched = True
-                break
-            # Instrument with role: <instrument> <number> (1-2 word instrument)
-            if re.fullmatch(r"\d{1,2}", tokens[i]):
+                    return True
+            return False
+        if rule == "instrument":
+            if re.fullmatch(r"\d{1,2}", tok):
                 inst_phrase = " ".join(tokens[start:i])
                 canon_group = _ALIAS_MAP.get(inst_phrase)
                 if canon_group:
                     canon, _ = canon_group
-                    instruments_found.append((start, canon, tokens[i]))
+                    instruments_found.append((start, canon, tok))
                     rules_fired.append(f"instrument role: {phrase}")
-                    for k in range(start, i + 1):
-                        consumed[k] = True
-                    matched = True
-                    break
-            # Two-word instrument (e.g. alto sax, tenor sax, bass clarinet, electric guitar)
-            if phrase in _ALIAS_MAP and span >= 2:
+                    take(start, i)
+                    return True
+            if span >= 2 and phrase in _ALIAS_MAP:
                 canon, _ = _ALIAS_MAP[phrase]
                 instruments_found.append((start, canon, None))
                 rules_fired.append(f"instrument: {phrase}")
-                for k in range(start, i + 1):
-                    consumed[k] = True
-                matched = True
-                break
-            # Group two-word (c instruments, bb instr, etc.)
-            if phrase in _GROUPS and span >= 2:
+                take(start, i)
+                return True
+            if span == 1 and tok in _ALIAS_MAP:
+                canon, _ = _ALIAS_MAP[tok]
+                instruments_found.append((i, canon, None))
+                rules_fired.append(f"instrument: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "group":
+            # Bare Bb/Eb belong to the score-key rule when that rule is on.
+            if phrase in _BARE_SCORE_KEYS and bare_key_on:
+                return False
+            if span >= 2 and phrase in _GROUPS:
                 groups_found.append((start, _GROUPS[phrase]))
                 rules_fired.append(f"group: {phrase}")
-                for k in range(start, i + 1):
-                    consumed[k] = True
-                matched = True
-                break
-            # Kind two-word (lead sheet)
-            if phrase in _KINDS and span >= 2:
-                kinds_found.append((start, _KINDS[phrase]))
-                rules_fired.append(f"kind: {phrase}")
-                for k in range(start, i + 1):
-                    consumed[k] = True
-                matched = True
-                break
-            # Conductor score two-word (big band only)
-            if (
-                library_type == "big band"
-                and span == 2
-                and phrase == "condensed score"
-            ):
+                take(start, i)
+                return True
+            if span == 1 and tok in _GROUPS:
+                groups_found.append((i, _GROUPS[tok]))
+                rules_fired.append(f"group: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "bare score key":
+            if span == 1 and tok in _BARE_SCORE_KEYS:
+                score_key = _BARE_SCORE_KEYS[tok]
+                rules_fired.append(f"score key: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "conductor":
+            if span >= 2 and phrase in _CONDUCTOR_NAMES:
                 conductors_found.append(start)
                 rules_fired.append(f"conductor: {phrase}")
-                for k in range(start, i + 1):
-                    consumed[k] = True
-                matched = True
+                take(start, i)
+                return True
+            if span == 1 and tok in _CONDUCTOR_NAMES:
+                conductors_found.append(i)
+                rules_fired.append(f"conductor: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "kind":
+            if span >= 2 and phrase in _KINDS:
+                kinds_found.append((start, _KINDS[phrase]))
+                rules_fired.append(f"kind: {phrase}")
+                take(start, i)
+                return True
+            if span == 1 and tok in _KINDS:
+                kinds_found.append((i, _KINDS[tok]))
+                rules_fired.append(f"kind: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "page split":
+            if (
+                span == 2
+                and tokens[start] in ("pg", "p", "page")
+                and re.fullmatch(r"\d{1,3}", tok)
+            ):
+                rules_fired.append(f"page split: {phrase}")
+                take(start, i)
+                return True
+            if span == 1 and tok in ("pg", "p", "page"):
+                rules_fired.append(f"page split: {tok}")
+                consumed[i] = True
+                return True
+            if span == 1 and re.fullmatch(r"p\d{1,3}", tok):
+                rules_fired.append(f"page split: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "version":
+            if span == 1 and re.fullmatch(r"v\d+", tok):
+                versions.append(tok)
+                rules_fired.append(f"version: {tok}")
+                consumed[i] = True
+                return True
+            return False
+        if rule == "noise":
+            if span == 1 and tok in _FILLER_WORDS:
+                rules_fired.append(f"filler: {tok}")
+                consumed[i] = True
+                return True
+            if span == 1 and (re.fullmatch(r"\d{1,3}", tok) or tok in _NOISE_WORDS):
+                rules_fired.append(f"noise: {tok}")
+                noise_positions.append(i)
+                consumed[i] = True
+                return True
+            return False
+        return False
+
+    i = n - 1
+    while i >= 0:
+        if consumed[i]:
+            i -= 1
+            continue
+        # Longest span first; within a span, rule priority, then table order.
+        matched = False
+        for span in (3, 2, 1):
+            start = i - span + 1
+            if start < 0 or any(consumed[start : i + 1]):
+                continue
+            for rule in span_rules:
+                if apply(rule, span, start):
+                    matched = True
+                    break
+            if matched:
                 break
-        if matched:
-            i -= 1
-            continue
-        # Single-token rules at position i.
-        tok = tokens[i]
-        # Horn role with slash: e.g. tokens "horn","1","2"? After normalize, "1/2" -> "1 2".
-        # Handle instrument + number(s) below via single instrument check first.
-        if tok in _ALIAS_MAP:
-            canon, _ = _ALIAS_MAP[tok]
-            # Check for role number immediately following? We go right-to-left,
-            # so role number would be at i+1 and already consumed as noise/digit?
-            # Instead detect pattern instrument + digits ahead.
-            instruments_found.append((i, canon, None))
-            rules_fired.append(f"instrument: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        if tok in _GROUPS:
-            groups_found.append((i, _GROUPS[tok]))
-            rules_fired.append(f"group: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        # Conductor score (big band only): a part of its own, never
-        # substituted for another part.
-        if library_type == "big band" and tok in ("conductor", "score"):
-            conductors_found.append(i)
-            rules_fired.append(f"conductor: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        if tok in _KINDS:
-            kinds_found.append((i, _KINDS[tok]))
-            rules_fired.append(f"kind: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        # Page split: pg N (pg already, N next), p1, p2
-        if tok in ("pg", "p", "page"):
-            rules_fired.append(f"page split: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        if re.fullmatch(r"p\d{1,3}", tok):
-            rules_fired.append(f"page split: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        if re.fullmatch(r"v\d+", tok):
-            versions.append(tok)
-            rules_fired.append(f"version: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        if tok in _FILLER_WORDS:
-            rules_fired.append(f"filler: {tok}")
-            consumed[i] = True
-            i -= 1
-            continue
-        # Noise: pure digits (track numbers, 0) and named noise words. Digits
-        # right after an instrument become its role below.
-        if re.fullmatch(r"\d{1,3}", tok) or tok in _NOISE_WORDS:
-            rules_fired.append(f"noise: {tok}")
-            noise_positions.append(i)
-            consumed[i] = True
-            i -= 1
-            continue
-        # Unmatched: leave as free tag candidate.
         i -= 1
 
     # Post-process roles: instrument followed by bare number (e.g. horn 1).
@@ -524,7 +571,7 @@ def interpret_remainder(
             part = f"{player} {player_role}" if player_role else player
             parts = [part, f"Horn {role}"]
             variations_out = [c.lower() for _, c, _ in instruments_found[:-2]]
-    elif library_type == "big band" and conductors_found:
+    elif conductors_found:
         part = "Conductor"
         parts = [part]
         variations_out = []
@@ -540,7 +587,8 @@ def interpret_remainder(
         variations_out = []
     else:
         defaulted = True
-        part = BIG_BAND_DEFAULT_PART if library_type == "big band" else COMBO_DEFAULT_PART
+        jumbo = rule_priority("jumbo default", library_type) > 0
+        part = BIG_BAND_DEFAULT_PART if jumbo else COMBO_DEFAULT_PART
         parts = [part]
         variations_out = []
 
@@ -566,7 +614,7 @@ def interpret_remainder(
         rules_fired=rules_fired,
         noise=noise,
         selectable=not (
-            library_type == "big band"
+            rule_priority("jumbo default", library_type) > 0
             and (defaulted or part in _GROUPS.values())
         ),
     )
@@ -720,9 +768,11 @@ def _base_instrument(part: str) -> str:
     return part
 
 
-def _folder_score_key(folder: str | None) -> str | None:
-    """Score key named by a title folder (`- Concert F`, `(in F)`, `- A Minor`)."""
-    return interpret_remainder(folder).score_key if folder else None
+def _folder_score_key(folder: str | None, library_type: str = "combo") -> str | None:
+    """Score key named by a title folder (`- Concert F`, `(in F)`, `- Bb`)."""
+    if not folder:
+        return None
+    return interpret_remainder(folder, library_type=library_type).score_key
 
 
 def is_known_part(requested: str) -> bool:
@@ -808,7 +858,7 @@ def match_candidate(
             stem_remainder, allow_dual=not has_parens, library_type=library_type
         )
         if not (interp.free_tags and not is_hard):
-            score_key = interp.score_key or _folder_score_key(folder)
+            score_key = interp.score_key or _folder_score_key(folder, library_type)
             return TitleCandidate(
                 remainder=stem_remainder,
                 parts=interp.parts,
@@ -853,7 +903,7 @@ def stem_candidate(
         remainder=clean_stem(stem),
         parts=interp.parts,
         part=interp.part,
-        score_key=interp.score_key or folder_key or _folder_score_key(folder),
+        score_key=interp.score_key or folder_key or _folder_score_key(folder, library_type),
         variations=interp.variations,
         free_tags=[],
         rules_fired=interp.rules_fired,

@@ -101,25 +101,30 @@ structure on top. `file:` layouts keep working unchanged.
   interpreted as tags. That is why `Partido Alto` keeps "Alto" and
   `Fascinating Rhythm` keeps "Rhythm". When only the folder matches, the
   stem's tags are read right to left up to the first word that isn't a tag.
-- **Rules:** the tag text is read right to left. At each position, rules are
-  tried in priority order and the longest span wins (first-match; no
-  whole-name scoring). Library type sets each rule's priority; 0 disables it.
-  Equal priority → rule order.
+- **Rules:** the tag text is read right to left. At each position the
+  longest span wins, then rule priority (first-match; no whole-name
+  scoring). Priorities live in `RULES` in `tunery/parts.py`: rule →
+  priority per library type, 0 disables it. Higher is tried first within a
+  span; equal priority follows the table order. A row with no matcher yet
+  does not fire.
 
   | Rule | Matches | Combo | Big band |
   |---|---|---|---|
-  | Explicit score key | `Concert <key>`, `in <key>`, `<key> major/minor`, `<key>m` | on | on |
-  | Instrument | vocabulary below, incl. roles `Horn N`, `Alto Sax 2` | on | on |
-  | Group | `Bb`, `Eb`, `Concert`, `C Instruments`, `… Instr`, `… part`, `Melody` | high | bare `Bb`/`Eb` is the score key (`Sweet Home Chicago.Bb`; author, 2026-10-16; not yet implemented, see Backlog "Rule profiles") |
-  | Kind | `Lead Sheet`, `Score`, `Lyrics`, `Solo`, `Changes`, `Structure`, `Harmony` | on | on |
-  | Page split | `Pg N`, `P1`, `_pg 2` | on | on |
-  | Noise | `original`, `rescan`, `0`, `org`, `iRealPro`, a leading `Copy of`, track numbers, fillers (`part`, `in`, `with`, `the`, `n`, `and`, `&`) | on | on |
-  | Version | `v2`, `v3`, …: a variation tag | on | on |
-  | Moved article | trailing `, A` / `, The` | on | on |
-  | Trailing key | lone `<key>` last after ` - `, or in `( )`/`[ ]` | 0 | on |
-  | Big-band instruments | sections (`Saxes`, `Trumpets 1 n 2`), doubles (`F Horn`, `Tuba`, `Baritone TC`, `Violins`), codes (`tbn1`, `bsx`, `as1`) | 0 | on |
-  | Arranger | trailing `-Name` / `(Name)` no other rule takes | 0 | on |
-  | Arrangement version | trailing number after title, arranger or key | 0 | on |
+  | Explicit score key | `Concert <key>`, `in <key>`, `<key> major/minor`, `<key>m` | 1 | 1 |
+  | Instrument | vocabulary below, incl. roles `Horn N`, `Alto Sax 2` | 1 | 1 |
+  | Group | `Concert`, `C Instruments`, `… Instr`, `… part`, `Melody`, `Rhythm`, `Bass Clef`; bare `Bb`/`Eb` only while bare score key is off | 2 | 1 |
+  | Bare score key | bare `Bb`, `Eb` (`Sweet Home Chicago.Bb`) | 0 | 1 |
+  | Conductor | `conductor`, `score`, `condensed score` | 0 | 1 |
+  | Kind | `Lead Sheet`, `Score`, `Lyrics`, `Solo`, `Changes`, `Structure`, `Harmony` | 1 | 1 |
+  | Page split | `Pg N`, `P1`, `_pg 2` | 1 | 1 |
+  | Noise | `original`, `rescan`, `0`, `org`, `iRealPro`, a leading `Copy of`, track numbers, fillers (`part`, `in`, `with`, `the`, `n`, `and`, `&`) | 1 | 1 |
+  | Version | `v2`, `v3`, …: a variation tag | 1 | 1 |
+  | Moved article | trailing `, A` / `, The` (the noise fillers) | 1 | 1 |
+  | Jumbo default | untagged file is the full score; a group file is a combined set; neither is selectable | 0 | 1 |
+  | Trailing key | lone `<key>` last after ` - `, or in `( )`/`[ ]` | 0 | 1 |
+  | Big-band instruments | sections (`Saxes`, `Trumpets 1 n 2`), doubles (`F Horn`, `Tuba`, `Baritone TC`, `Violins`), codes (`tbn1`, `bsx`, `as1`) | 0 | 1 |
+  | Arranger | trailing `-Name` / `(Name)` no other rule takes | 0 | 1 |
+  | Arrangement version | trailing number after title, arranger or key | 0 | 1 |
 
 - **Vocabulary** (instrument → group): Soprano Sax (soprano) → Bb; Alto Sax
   (alto, alt, as) → Eb; Tenor Sax (tenor, ten, ts, tenorsax) → Bb; Bari Sax
@@ -1182,7 +1187,7 @@ the parent spec.
 Each patch updates the design sections it changes and adds tests (blank
 PDFs under `tmp_path`, names copied from the libraries).
 
-- **LIB8.1** Rule profiles: the "Rules" table of Interpretation becomes one
+- [x] **LIB8.1** Rule profiles: the "Rules" table of Interpretation becomes one
   table in `tunery/parts.py` (rule → priority per library type, 0 = off).
   The interpreter consults it instead of `library_type` checks (conductor,
   jumbo default). New in it: in a big-band library a bare `Bb`/`Eb` is the

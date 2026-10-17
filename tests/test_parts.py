@@ -77,6 +77,27 @@ def test_group_and_score_key() -> None:
     assert parse_filename("song-Concert Bb").score_key == "Bb"
 
 
+def test_bare_bb_eb_is_score_key_in_big_band_only() -> None:
+    """A bare Bb/Eb is the score key in big band, and a group part in combo."""
+    for token in ("Bb", "Eb"):
+        band = match_candidate(
+            "Sweet Home Chicago",
+            f"Sweet Home Chicago.{token}",
+            library_type="big band",
+        )
+        assert band is not None
+        assert band.part == "Score", token
+        assert band.score_key == token
+        assert band.selectable is False
+        combo = match_candidate(
+            "Sweet Home Chicago", f"Sweet Home Chicago.{token}"
+        )
+        assert combo is not None
+        assert combo.part == token
+        assert combo.score_key is None
+        assert combo.selectable is True
+
+
 def test_rhythm_aliases() -> None:
     assert interpret_remainder("Electric_Guitar").part == "Guitar"
     assert interpret_remainder("Electric Piano").part == "Piano"
