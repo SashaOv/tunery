@@ -251,15 +251,16 @@ structure on top. `file:` layouts keep working unchanged.
 - **Choice per part:** each part takes the best rank at which any source has
   a candidate. Among the candidates at that rank, the order is:
   1. those carrying the chart's `tag:`;
-  2. the fewest substitution steps: a chart's position in the part's chain,
+  2. those under the chart's `path:` (see Path per chart);
+  3. the fewest substitution steps: a chart's position in the part's chain,
      0 for the part itself (`tenor (horn 2)` before `.Bb` for Tenor Sax;
      Alto Sax before Eb for Alto Sax 2). A chart's `part:` mapping is not a
      substitution: the mapped part is the one requested (author,
      2026-10-15);
-  3. those in the top source;
-  4. the fewest extra words (variations, free tags and noise words each add
+  4. those in the top source;
+  5. the fewest extra words (variations, free tags and noise words each add
      1: `Creepin.pdf`, 0, beats `Creepin.iRealPro.pdf`, 1);
-  5. path order.
+  6. path order.
 
   Example: Poinciana's Bass is only in `_Petes/Poinciana`, which makes it
   the top source, so its concert chart wins over `SheetMusic/Poinciana`'s.
@@ -288,6 +289,15 @@ structure on top. `file:` layouts keep working unchanged.
   by part, candidates carrying all those variation or free tags (see Choice
   per part). If no candidate of the title carries them, warn `no <tag>
   version of "<title>"`.
+- **Path per chart:** a chart's `path:` (`path: Vocals`, or `paths:` one or
+  several) prefers, part by part, candidates whose path inside the library
+  contains the fragment, ignoring case. A value with `*` or `?` is a glob
+  on that whole path (`Tunes*` matches `Tunes for Michelle/…`; `*` crosses
+  folders). Several values match when any one does. It ranks right after
+  `tag:` in Choice per part. If no candidate of the title matches, warn
+  `no candidate under "<path>" for "<title>"` (several fragments: `no
+  candidate under "<path>" or "<path>" for "<title>"`) and fall back to the
+  other choice rules.
 - **Bookmark hierarchy:** `--explicit-bookmark-hierarchy` prefixes child
   (part) bookmarks with `_ ` (`_ Bass`), for readers that show only one
   bookmark level.
@@ -1229,10 +1239,11 @@ PDFs under `tmp_path`, names copied from the libraries).
   - `Morning` still doesn't claim `Morning Dance` when `Morning` has its own
     files;
   - two candidates → not found, both named.
-- **LIB8.5** Path hint per chart: `path:` (or `paths:`, one or several)
+- [x] **LIB8.5** Path hint per chart: `path:` (or `paths:`, one or several)
   prefers, part by part, candidates whose path inside their library
-  contains the fragment, ignoring case. A value with `*` or `?` is a glob on
-  that path. It ranks right after `tag:` in Choice per part. If no candidate
+  contains the fragment, ignoring case. Several values match when any one
+  does. A value with `*` or `?` is a glob on that path. It ranks right
+  after `tag:` in Choice per part. If no candidate
   of the title matches, it warns `no candidate under "<path>" for
   "<title>"`, as `tag:` does.
   Tests:

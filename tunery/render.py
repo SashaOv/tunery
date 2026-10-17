@@ -50,10 +50,14 @@ class FileEntry(BaseModel):
     tag: list[str] | None = Field(
         default=None, validation_alias=AliasChoices("tag", "tags")
     )
+    # Preferred library-relative path (`path:` or `paths:`, one or a list).
+    path: list[str] | None = Field(
+        default=None, validation_alias=AliasChoices("path", "paths")
+    )
 
-    @field_validator("tag", mode="before")
+    @field_validator("tag", "path", mode="before")
     @classmethod
-    def _tag_list(cls, value: object) -> object:
+    def _one_or_list(cls, value: object) -> object:
         return [value] if isinstance(value, str) else value
 
     def model_post_init(self, context: object, /) -> None:
@@ -349,7 +353,9 @@ def select_and_add(
             part_map[parse_part_name(asked, title)] = parse_part_name(used, title)
         if not replaced:
             subparts = list(dict.fromkeys(part_map.get(p, p) for p in subparts))
-    selection = libraries.select_parts(title, subparts, entry.key, entry.tag)
+    selection = libraries.select_parts(
+        title, subparts, entry.key, entry.tag, entry.path
+    )
     if selection is None:
         return NotFoundResult(title=title)
     for warning in selection.warnings:

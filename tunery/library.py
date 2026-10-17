@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import os
 from dataclasses import dataclass, replace
@@ -293,6 +294,7 @@ class DirectoryLibrary:
         parts: list[str],
         score_key: str | None = None,
         tags: list[str] | None = None,
+        paths: list[str] | None = None,
     ) -> TitleSelection | None:
         """Choose a chart for each requested part of a title.
 
@@ -300,10 +302,11 @@ class DirectoryLibrary:
         longer name is that title's file and is warned; several longer names
         leave the title not found and name them. Each part takes the best
         rank where any source (folder) has a candidate.
-        Among those: candidates carrying all `tags`, then the fewest
-        substitution steps, then the title's top source, then the fewest
-        extra words, then path order. A part mapped by the chart's `part:`
-        is requested as such, so the mapping is not a substitution. One warning per title reports several
+        Among those: candidates carrying all `tags`, then those under the
+        chart's `path:`, then the fewest substitution steps, then the title's
+        top source, then the fewest extra words, then path order. A part
+        mapped by the chart's `part:` is requested as such, so the mapping
+        is not a substitution. One warning per title reports several
         candidates for a part, or charts from more than one folder.
         """
         cands, name_warnings = self._titled_candidates(title)
@@ -338,6 +341,16 @@ class DirectoryLibrary:
 
         if wanted_tags and not any(carries_tags(c) for _, c in cands):
             warnings.append(f'no {", ".join(tags or [])} version of "{title}"')
+        wanted_paths = list(paths or [])
+
+        def under_path(path: Path) -> bool:
+            if not wanted_paths:
+                return True
+            text = self.display_path(path).as_posix()
+            return any(_path_hint_matches(fragment, text) for fragment in wanted_paths)
+
+        if wanted_paths and not any(under_path(p) for p, _ in cands):
+            warnings.append(_no_path_candidate(title, wanted_paths))
         source = {p: self.display_path(p).parent for p, _ in cands}
         top = _top_source(parts, cands, source)
 
@@ -353,6 +366,7 @@ class DirectoryLibrary:
             at_rank.sort(
                 key=lambda h: (
                     not carries_tags(h[1]),
+                    not under_path(h[0]),
                     chain.index(h[2]),  # substitution steps
                     source[h[0]] != top,
                     h[1].tag_count,
@@ -557,6 +571,24 @@ class ScoreFolder(DirectoryLibrary):
         ]
 
 
+def _path_hint_matches(fragment: str, display: str) -> bool:
+    """True when `display` contains `fragment`, ignoring case.
+
+    A fragment that contains `*` or `?` is a glob on the whole path.
+    """
+    folded = display.casefold()
+    needle = fragment.casefold()
+    if "*" in fragment or "?" in fragment:
+        return fnmatch.fnmatchcase(folded, needle)
+    return needle in folded
+
+
+def _no_path_candidate(title: str, paths: list[str]) -> str:
+    """Warn that no candidate's path matched. Several fragments are or-ed."""
+    shown = " or ".join(f'"{path}"' for path in paths)
+    return f'no candidate under {shown} for "{title}"'
+
+
 def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:
     # Jumbo and combined-set scores are listed but never matched.
     if not cand.selectable:
@@ -737,6 +769,7 @@ class LibraryCollection:
         parts: list[str],
         score_key: str | None = None,
         tags: list[str] | None = None,
+        paths: list[str] | None = None,
     ) -> TitleSelection | None:
         """Choose charts for a title's parts, highest-priority library first.
 
@@ -749,7 +782,9 @@ class LibraryCollection:
         found: TitleSelection | None = None
         for library in reversed(self._libraries):
             if isinstance(library, (LibraryCollection, DirectoryLibrary)):
-                selection = library.select_parts(title, parts, score_key, tags)
+                selection = library.select_parts(
+                    title, parts, score_key, tags, paths
+                )
             else:
                 match = library.lookup_title(title)
                 selection = (
