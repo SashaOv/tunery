@@ -143,6 +143,7 @@ bass-26-09-12:
     Can't Take My Eyes Off of You: {file: "Can't Take My Eyes Off You-Warrington.pdf", page: 35, length: 2}
     Bandstand Boogie: {file: "Bandstand Boogie-Lowden.pdf", page: 15, length: null}
     Hay Burner: {file: "Hay Burner-Nestico/Bass.pdf", page: null, length: null}
+    Fly Me To The Moon: {file: "Fly Me To The Moon/fmttmbass.pdf", page: null, length: null}
     I've Got You Under My Skin: {file: "I've Got You Under My Skin - Ebm.pdf", page: 27, length: 2}
     Give Me The Simple Life: {file: "Give Me the Simple Life-Wolpe.pdf", page: 33, length: 3}
     Moonglow: {file: "Moonglow-Wolpe.pdf", page: 27, length: 2}
@@ -157,7 +158,6 @@ bass-26-09-12:
     You Go To My Head: {file: "You Go to My Head-Dedrick.pdf", page: 3, length: 2}
   # Titles without an index entry: matched files exist but no part matches.
   missing:
-  - Fly Me To The Moon
   - Swingin' Shepard Blues, The
   - A Day in the Life of a Fool
   - Groovin' Easy

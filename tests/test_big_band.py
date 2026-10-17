@@ -67,6 +67,26 @@ def test_conductor_stays_concert_in_combo(
     assert "missing Piano" not in out
 
 
+def test_fly_me_bass_prefers_unnumbered_initials(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(
+        tmp_path / "MasterList" / "Fly Me To The Moon",
+        ["fmttmbass.pdf", "fmttmbass1.pdf", "fmttmbass2.pdf"],
+    )
+    (tmp_path / "tunery.yaml").write_text("- library: MasterList\n  type: big band\n")
+    layout = write_layout(tmp_path / "show.yaml", [{"title": "Fly Me To The Moon"}])
+
+    render(layout, tmp_path / "show.pdf", part=["Bass"], verbose=2)
+
+    out = capsys.readouterr().out
+    assert 'fmttmbass.pdf): part=Bass' in out
+    assert "part=Bass 1" in out
+    assert "part=Bass 2" in out
+    assert '"Fly Me To The Moon" Bass: fmttmbass.pdf' in out
+    assert "missing Bass" not in out
+
+
 def test_sweet_home_chicago_bb_is_jumbo_with_score_key(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

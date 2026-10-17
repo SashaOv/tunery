@@ -163,7 +163,7 @@ def test_26_08_07_bass_21_titles(show: Path, capsys) -> None:
     check_book(show, capsys, "bass-26-08-07")
 
 
-def test_26_09_12_bass_15_of_25(show: Path, capsys) -> None:
+def test_26_09_12_bass_16_of_25(show: Path, capsys) -> None:
     book = "bass-26-09-12"
     pdf, out = render_book(show, book, capsys)
     assert "warning" not in out

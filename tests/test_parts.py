@@ -8,6 +8,7 @@ from tunery.parts import (
     normalize_text,
     parse_filename,
     squash_text,
+    stem_candidate,
 )
 
 
@@ -75,6 +76,30 @@ def test_group_and_score_key() -> None:
     assert item.score_key == "F"
     assert item.part == "Piano"
     assert parse_filename("song-Concert Bb").score_key == "Bb"
+
+
+def test_title_initials_read_the_rest_as_tags() -> None:
+    folder = "Fly Me To The Moon"
+    bass = stem_candidate("fmttmbass", folder, library_type="big band")
+    assert bass.part == "Bass"
+    numbered = stem_candidate("fmttmbass1", folder, library_type="big band")
+    assert numbered.part == "Bass 1"
+    piano = stem_candidate("fmttmpno1", folder, library_type="big band")
+    assert piano.part == "Piano"
+    assert any(rule.startswith("page split") for rule in piano.rules_fired)
+    # Two-letter initials stay off (Glenn's Den is `gd`).
+    short = stem_candidate("gdbass", "Glenn's Den", library_type="big band")
+    assert short.part == "Score"
+
+
+def test_combo_title_initials_stay_off() -> None:
+    ode = match_candidate("Ode", "Ode.bass", "Ode")
+    assert ode is not None
+    assert ode.part == "Bass"
+    assert "title initials" not in ode.rules_fired
+    # Three-letter initials that prefix a name still do not apply in combo.
+    glued = stem_candidate("fmttmbass", "Fly Me To The Moon")
+    assert glued.part == "Concert"
 
 
 def test_bare_bb_eb_is_score_key_in_big_band_only() -> None:

@@ -6,7 +6,7 @@ Rule priorities per library type live in `RULES`. See docs/todo/library-based.md
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from rapidfuzz import fuzz
@@ -270,6 +270,7 @@ RULES: dict[str, dict[str, int]] = {
     "version": {"combo": 1, "big band": 1},
     "moved article": {"combo": 1, "big band": 1},
     "jumbo default": {"combo": 0, "big band": 1},
+    "title initials": {"combo": 0, "big band": 1},
     "trailing key": {"combo": 0, "big band": 1},
     "big-band instruments": {"combo": 0, "big band": 1},
     "arranger": {"combo": 0, "big band": 1},
@@ -890,6 +891,42 @@ def match_candidate(
     return None
 
 
+def _title_initials(name: str) -> str:
+    """First letter of each word. `Fly Me To The Moon` is `fmttm`."""
+    return "".join(word[0] for word in normalize_text(name).split() if word)
+
+
+def _initials_tags(stem: str, folder: str | None, library_type: str) -> str | None:
+    """Tags after a title folder's initials, or None when that rule is off.
+
+    The initials need at least three letters. Digits are split from the
+    words they were glued to (`bass1` → `bass 1`).
+    """
+    if folder is None or rule_priority("title initials", library_type) <= 0:
+        return None
+    initials = _title_initials(folder)
+    if len(initials) < 3:
+        return None
+    squashed = squash_text(clean_stem(stem))
+    if not squashed.startswith(initials):
+        return None
+    rest = squashed[len(initials) :]
+    return re.sub(r"(?<=\d)(?=\D)|(?<=\D)(?=\d)", " ", rest)
+
+
+def _piano_page(interp: InterpretedTags) -> InterpretedTags:
+    """A number glued to Piano is a page of that part, not Piano N."""
+    match = re.fullmatch(r"Piano (\d+)", interp.part)
+    if match is None:
+        return interp
+    return replace(
+        interp,
+        parts=["Piano"],
+        part="Piano",
+        rules_fired=[*interp.rules_fired, f"page split: {match.group(1)}"],
+    )
+
+
 def stem_candidate(
     stem: str,
     folder: str | None = None,
@@ -897,8 +934,17 @@ def stem_candidate(
     library_type: str = "combo",
 ) -> TitleCandidate:
     """A file whose title is known from its folder: the whole stem is read
-    as tags, and words no rule takes are ignored."""
-    interp = interpret_remainder(clean_stem(stem), library_type=library_type)
+    as tags, and words no rule takes are ignored.
+
+    In a big-band library a stem that starts with the folder title's
+    initials is that title; the rest of the name is the tags.
+    """
+    initials = _initials_tags(stem, folder, library_type)
+    text = clean_stem(stem) if initials is None else initials
+    interp = interpret_remainder(text, library_type=library_type)
+    if initials is not None:
+        interp = _piano_page(interp)
+        interp = replace(interp, rules_fired=["title initials", *interp.rules_fired])
     return TitleCandidate(
         remainder=clean_stem(stem),
         parts=interp.parts,

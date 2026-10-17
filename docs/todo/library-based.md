@@ -121,6 +121,7 @@ structure on top. `file:` layouts keep working unchanged.
   | Version | `v2`, `v3`, …: a variation tag | 1 | 1 |
   | Moved article | trailing `, A` / `, The` (the noise fillers) | 1 | 1 |
   | Jumbo default | untagged file is the full score; a group file is a combined set; neither is selectable | 0 | 1 |
+  | Title initials | in a title folder, a name starting with the folder title's initials (first letter of each word, at least three) is that title; the rest is tags, digits split from words (`fmttmbass` → Bass, `fmttmbass1` → Bass 1). A number glued to Piano is a page of that part (`fmttmpno1` → Piano, page 1) | 0 | 1 |
   | Trailing key | lone `<key>` last after ` - `, or in `( )`/`[ ]` | 0 | 1 |
   | Big-band instruments | sections (`Saxes`, `Trumpets 1 n 2`), doubles (`F Horn`, `Tuba`, `Baritone TC`, `Violins`), codes (`tbn1`, `bsx`, `as1`) | 0 | 1 |
   | Arranger | trailing `-Name` / `(Name)` no other rule takes | 0 | 1 |
@@ -1198,7 +1199,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   - in combo it stays a Bb part.
 - [x] **LIB8.2** Drop Sweet Home Chicago's `file:` from the SOJ test index;
   the SOJ test still picks `Sweet Home Chicago.Bb.pdf` at the index pages.
-- **LIB8.3** Title initials: in a title folder, a file name that starts
+- [x] **LIB8.3** Title initials: in a title folder, a file name that starts
   with the folder title's initials (`fmttm` for Fly Me To The Moon) reads
   the rest as tags, digits split from words (`fmttmbass` → Bass,
   `fmttmbass1` → Bass 1). Initials need at least three letters.
