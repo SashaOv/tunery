@@ -1160,7 +1160,7 @@ Logs: scratchpad `acceptance-LIB7/`.
 
 ### LIB8: Big-band names read by rule: score keys, title initials, shortened titles
 
-Status: planned, approved 2026-10-16
+Status: planned, approved 2026-10-16 (LIB8.5 added by the author, same day)
 
 **Improvement:** the last three big-band naming gaps a real setlist hits
 are closed by rules, not by data workarounds:
@@ -1172,8 +1172,10 @@ are closed by rules, not by data workarounds:
   title.
 
 Rules that depend on the library type live in one table instead of scattered
-checks. After LIB8 only the `path:` hint remains in Backlog (author,
-2026-10-16).
+checks. A chart's `path:` prefers charts from a given folder (JBM's All of
+Me: `path: Vocals` over the `Tunes for Michelle` copy). After LIB8 the
+Backlog is empty, and the spec can close (onewrap); Future Backlog moves to
+the parent spec.
 
 **Patches:**
 
@@ -1211,6 +1213,17 @@ PDFs under `tmp_path`, names copied from the libraries).
   - `Morning` still doesn't claim `Morning Dance` when `Morning` has its own
     files;
   - two candidates → not found, both named.
+- **LIB8.5** Path hint per chart: `path:` (or `paths:`, one or several)
+  prefers, part by part, candidates whose path inside their library
+  contains the fragment, ignoring case. A value with `*` or `?` is a glob on
+  that path. It ranks right after `tag:` in Choice per part. If no candidate
+  of the title matches, it warns `no candidate under "<path>" for
+  "<title>"`, as `tag:` does.
+  Tests:
+  - All of Me with `path: Vocals` takes `Vocals/All Of Me/…`;
+  - with `path: "Tunes*"` it takes the `Tunes for Michelle` copy;
+  - an unmatched path warns and falls back;
+  - `path:` and `tag:` together.
 
 **One-off data change (declared, executor applies after LIB8.2):** remove
 `file: "Sweet Home Chicago.Bb.pdf"` from `GDrive/MasterList/tunery.yaml` in
@@ -1230,6 +1243,11 @@ one entry).
     Right Down is matched (warned) and reports `missing Bass` (it has no
     index entry); 16 titles found, 9 `missing Bass` (8 without an entry,
     plus Sit Right Down).
+- *Live (executor):* a scratchpad layout with All of Me and `path:
+  Vocals`, whose `config:` includes `/Users/sasha/personal/wip/apps/JBM/
+  tunery.yaml` as a library collection: `--part Piano --test "All of Me"`
+  takes `Vocals/All Of Me/All of Me (Vocal)-Piano.pdf`; the same without
+  `path:` takes the `Tunes for Michelle` copy on path order (as today).
 - *Live regression:* the LIB6 Crosswinds `--test .` runs (concert, norm,
   full, rs) and JBM `--part Rhythm --test .` give the same picks.
 - *Open if not observed:* name each clause not run, with what it takes.
@@ -1240,8 +1258,6 @@ one entry).
 
 ## Backlog
 
-- `path:` hint per chart: prefer candidates whose path contains a fragment
-  or pattern (`file:` covers an exact folder).
 
 ## Future Backlog
 - Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).
