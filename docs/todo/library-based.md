@@ -501,6 +501,18 @@ the repo).
   - a split part appears once in the hand layouts: 26-06-07's Come Dance
     With Me is a section with `Page 1` (p. 26) and `Page 2` (p. 25);
   - 26 of 32 entries keep page parts after dropping `{file}` parts.
+- **Big-band names in 26-09-12** (2026-10-16, current code, `MasterList`
+  as big band):
+  - Fly Me To The Moon: all 39 files in its folder read as jumbo (Score),
+    because their names start with the title's initials (`fmttmbass.pdf`,
+    `fmttm2tbn1.pdf`), not the title. The hand bass layout uses
+    `fmttmbass.pdf`. Piano is split across page files (`fmttmpno1`…`6`, one
+    misspelled `mttmpno3`).
+  - I'm Gonna Sit Right Down: no candidate; exactly one `MasterList` name
+    starts with the title (`I’m Gonna Sit Right Down and Write Myself a
+    Letter.pdf`).
+  - Sweet Home Chicago: without the index's `file:`, `.Bb` reads as a Bb
+    part.
 - **Config discovery today** resolves the layout directory physically. From
   `JBM/GDrive/Shows/26-10-21` (`GDrive` → Google Drive), after the author
   removed the Drive-side `tunery.yaml`, it finds no config and renders
@@ -1146,33 +1158,106 @@ Logs: scratchpad `acceptance-LIB7/`.
 - Optional: add index entries for the 10 titles of 26-09-12 that lack one.
 - Review the rendered books musically.
 
+### LIB8: Big-band names read by rule: score keys, title initials, shortened titles
+
+Status: planned, approved 2026-10-16
+
+**Improvement:** the last three big-band naming gaps a real setlist hits
+are closed by rules, not by data workarounds:
+- Sweet Home Chicago's `.Bb` reads as its score key, so the index needs no
+  `file:`;
+- 26-09-12's Fly Me To The Moon takes `fmttmbass.pdf` for Bass, from names
+  that start with the title's initials;
+- I'm Gonna Sit Right Down finds its full-score file from the shortened
+  title.
+
+Rules that depend on the library type live in one table instead of scattered
+checks. After LIB8 only the `path:` hint remains in Backlog (author,
+2026-10-16).
+
+**Patches:**
+
+Each patch updates the design sections it changes and adds tests (blank
+PDFs under `tmp_path`, names copied from the libraries).
+
+- **LIB8.1** Rule profiles: the "Rules" table of Interpretation becomes one
+  table in `tunery/parts.py` (rule → priority per library type, 0 = off).
+  The interpreter consults it instead of `library_type` checks (conductor,
+  jumbo default). New in it: in a big-band library a bare `Bb`/`Eb` is the
+  score key (Group rule off for bare keys). Behavior is otherwise unchanged.
+  Tests:
+  - all existing tests pass;
+  - `Sweet Home Chicago.Bb.pdf` in big band is jumbo with score key Bb;
+  - in combo it stays a Bb part.
+- **LIB8.2** Drop Sweet Home Chicago's `file:` from the SOJ test index;
+  the SOJ test still picks `Sweet Home Chicago.Bb.pdf` at the index pages.
+- **LIB8.3** Title initials: in a title folder, a file name that starts
+  with the folder title's initials (`fmttm` for Fly Me To The Moon) reads
+  the rest as tags, digits split from words (`fmttmbass` → Bass,
+  `fmttmbass1` → Bass 1). Initials need at least three letters.
+  Tests:
+  - `fmttmbass` is Bass, and Bass takes it over `fmttmbass1`/`2`;
+  - `fmttmpno1` is Piano with a page number;
+  - a combo folder whose initials happen to prefix a name is not affected
+    (`Ode/Ode.bass` stays as today).
+- **LIB8.4** Shortened titles: when a title finds no candidate, a name in
+  the library that starts with the title, followed by more words, is the
+  title's file. It must be the only such name, and it is warned
+  (`matched "I'm Gonna Sit Right Down" to "I’m Gonna Sit Right Down and Write
+  Myself a Letter"`). Two such names → not found, and the warning lists
+  them.
+  Tests:
+  - I'm Gonna Sit Right Down finds its file;
+  - `Morning` still doesn't claim `Morning Dance` when `Morning` has its own
+    files;
+  - two candidates → not found, both named.
+
+**One-off data change (declared, executor applies after LIB8.2):** remove
+`file: "Sweet Home Chicago.Bb.pdf"` from `GDrive/MasterList/tunery.yaml` in
+Drive (the author asked for the index to be placed there; this edits that
+one entry).
+
+**Acceptance:**
+
+- *Scripted:* `uv run build.py gate` passes, including the LIB8 tests.
+- *Live (executor)*, from `/Users/sasha/personal/wip/apps/SOJ/cache`, with
+  the real Drive index (each book's scratchpad layout of the hand layout's
+  titles references `GDrive/MasterList/tunery.yaml` in `config:`):
+  - 26-07-09 bass 15/15 and 28 pages; 26-08-07 bass 21/21 and 44 pages;
+    26-07-09 piano 15/15 and 45 pages. Sweet Home Chicago comes from
+    `Sweet Home Chicago.Bb.pdf` with no `file:` in the index.
+  - 26-09-12 bass: Fly Me To The Moon takes `fmttmbass.pdf`; I'm Gonna Sit
+    Right Down is matched (warned) and reports `missing Bass` (it has no
+    index entry); 16 titles found, 9 `missing Bass` (8 without an entry,
+    plus Sit Right Down).
+- *Live regression:* the LIB6 Crosswinds `--test .` runs (concert, norm,
+  full, rs) and JBM `--part Rhythm --test .` give the same picks.
+- *Open if not observed:* name each clause not run, with what it takes.
+
+**Author action required at completion:**
+
+- Review the rendered books musically (LIB6, LIB7 and LIB8 books).
+
 ## Backlog
 
+- `path:` hint per chart: prefer candidates whose path contains a fragment
+  or pattern (`file:` covers an exact folder).
+
+## Future Backlog
+- Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).
 - Group folders (`Bb Parts`) add their part to everything below.
 - Sibling-prefix grouping for name texts (rules in Facts).
 - Rest of the big-band profile (rules marked big band above): trailing key,
-  big-band instruments and codes, arrangement version (`type`, Score
-  default and arranger: LIB7).
+  big-band instruments and codes, arrangement version (`type` and the
+  jumbo/conductor reading: LIB7).
+- Big-band best-effort: two-letter initials (`gd…` for Glenn's Den) and
+  camelCase titles (`FlyingHomeRHYTHM`) (three-letter initials: LIB8.3).
 - Durable named parts in the config (layout-level names: LIB5).
-- Variation selection by arranger (score key: LIB4.8; tags: LIB5).
 - Forced per-item metadata in library records; later, groups selected by
   pattern.
-- Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).
 - Library exclusion list (`.gitignore` analog) beyond `_archive`.
 - Inspection command listing discovered titles, parts and free tags.
 - `lookup --part`.
-- `path:` hint per chart: prefer candidates whose path contains a fragment
-  or pattern (`file:` covers an exact folder).
-- Big-band best-effort: acronym and camelCase titles (`fmttm…`, `gd…`,
-  `FlyingHomeRHYTHM`).
 - Per-patch interaction tests (new path vs. keys, collections, `file:`,
   mappings, links): postponed to /onereview.
 - Full score: every part of every title in one file.
-- Shortened titles: a title that is the start of exactly one file name in the
-  library, with free words after a space, matches when the title finds
-  nothing else (warned): `I'm Gonna Sit Right Down` → `… and Write Myself a
-  Letter.pdf`.
-- Rule profiles: the per-type rule priorities of the table above, in one
-  place, replacing scattered `library_type` checks. Then a bare `Bb`/`Eb` in
-  a big-band library is the score key, and Sweet Home Chicago's index
-  `file:` can go.
