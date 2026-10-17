@@ -1196,7 +1196,7 @@ PDFs under `tmp_path`, names copied from the libraries).
   - all existing tests pass;
   - `Sweet Home Chicago.Bb.pdf` in big band is jumbo with score key Bb;
   - in combo it stays a Bb part.
-- **LIB8.2** Drop Sweet Home Chicago's `file:` from the SOJ test index;
+- [x] **LIB8.2** Drop Sweet Home Chicago's `file:` from the SOJ test index;
   the SOJ test still picks `Sweet Home Chicago.Bb.pdf` at the index pages.
 - **LIB8.3** Title initials: in a title folder, a file name that starts
   with the folder title's initials (`fmttm` for Fly Me To The Moon) reads

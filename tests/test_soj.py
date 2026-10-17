@@ -45,10 +45,10 @@ JUMBO_PAGES = 60
 
 # (file, page, length) the title-only rendering picks where it differs from
 # the hand book. The hand books take Sweet Home Chicago from Repertoire's
-# renamed copy (`-Clark.pdf`); MasterList has only `Sweet Home Chicago.Bb.pdf`,
-# where `Bb` is the score key, so the index pages land there. Walking My Baby
-# Back Home's piano is [31, 5] in the converted index, unlike the hand
-# layout's 31-34.
+# renamed copy (`-Clark.pdf`). MasterList has only `Sweet Home Chicago.Bb.pdf`;
+# `.Bb` is the score key, so the index finds that jumbo with no `file:`.
+# Walking My Baby Back Home's piano is [31, 5] in the converted index, unlike
+# the hand layout's 31-34.
 SWEET_HOME = "Sweet Home Chicago.Bb.pdf"
 EXPECTED = {
     ("bass-26-07-09", "Sweet Home Chicago"): (SWEET_HOME, 27, 2),
@@ -144,6 +144,11 @@ def check_book(root: Path, capsys, book: str) -> None:
         # A hand page without a length is one page, like a bare index page.
         length = hand["length"] if hand["length"] is not None else 1
         assert dict(spans(pdf))[title] == length, title
+
+
+def test_sweet_home_chicago_index_names_no_file() -> None:
+    entry = next(item for item in INDEX if item["title"] == "Sweet Home Chicago")
+    assert "file" not in entry
 
 
 def test_26_07_09_bass_15_titles(show: Path, capsys) -> None:

@@ -12,7 +12,7 @@
 - {title: "Kansas City", parts: {bass: [27, 2], piano: [33, 3]}}
 - {title: "Orange Colored Sky", parts: {bass: [28, 2], piano: [30, 2]}}
 - {title: "Summer Wind", parts: {bass: [31, 2], piano: [28, 4]}}
-- {title: "Sweet Home Chicago", file: "Sweet Home Chicago.Bb.pdf", parts: {bass: [27, 2], piano: [29, 3]}}
+- {title: "Sweet Home Chicago", parts: {bass: [27, 2], piano: [29, 3]}}
 - {title: "Love is Here to Stay", file: "Love Is Here To Stay.Low Key.Bb.pdf", parts: {bass: [30, 2]}}
 - {title: "Georgia On My Mind", parts: {bass: [27, 2]}}
 - {title: "All of Me", parts: {bass: [29, 2]}}
