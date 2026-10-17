@@ -134,7 +134,7 @@ def expand_part_specs(
     """Normalize --part options into (output label, subparts) per output.
 
     Each option is one output. A comma-separated value combines its parts
-    under a '+'-joined label. Names defined in the layout config and the
+    under a '-'-joined label. Names defined in the layout config and the
     rhythm section (RS/Rhythm/Rhythm Section) expand to their parts.
     """
     if parts is None:
@@ -149,7 +149,7 @@ def expand_part_specs(
             specs.append(("Concert", ["Concert"]))
             continue
         subparts = list(dict.fromkeys(p for _, members in expanded for p in members))
-        specs.append(("+".join(label for label, _ in expanded), subparts))
+        specs.append(("-".join(label for label, _ in expanded), subparts))
     return specs or [("Concert", ["Concert"])]
 
 
@@ -504,7 +504,7 @@ def render(
 
     Renders one setbook per --part option. `--part`
     selects instrument parts with substitution chains; other than Concert it
-    writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>+<B>.pdf`.
+    writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>-<B>.pdf`.
     """
     root = view_base(base)
     layout_path = lexical_absolute(layout_path, root)

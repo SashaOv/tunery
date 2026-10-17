@@ -29,7 +29,7 @@ def render_title(
     layout = write_layout(root / "gig.yaml", [{"title": title}])
     capsys.readouterr()
     render(layout, root / "book.pdf", part=[part], verbose=1)
-    label = "+".join(p.strip() for p in part.split(","))
+    label = "-".join(p.strip() for p in part.split(","))
     book = root / ("book.pdf" if label == "Concert" else f"book.{label}.pdf")
     return capsys.readouterr().out, outline_titles(book)
 

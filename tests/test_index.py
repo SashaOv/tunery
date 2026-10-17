@@ -118,7 +118,7 @@ def test_index_part_and_part_file_coexist(tmp_path: Path) -> None:
 
     render(layout, tmp_path / "show.pdf", part=["Piano,Bass"])
 
-    with pikepdf.Pdf.open(tmp_path / "show.Piano+Bass.pdf") as pdf:
+    with pikepdf.Pdf.open(tmp_path / "show.Piano-Bass.pdf") as pdf:
         assert len(pdf.pages) == 5
         with pdf.open_outline() as outline:
             root = list(outline.root)

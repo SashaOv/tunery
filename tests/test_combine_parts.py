@@ -55,7 +55,7 @@ def test_combined_parts_nested_bookmarks(tmp_path: Path) -> None:
 
     render(layout, tmp_path / "book.pdf", part=["Bass,Piano"])
 
-    out = tmp_path / "book.Bass+Piano.pdf"
+    out = tmp_path / "book.Bass-Piano.pdf"
     assert out.exists()
     with pikepdf.Pdf.open(out) as pdf:
         assert len(pdf.pages) == 3
@@ -70,7 +70,7 @@ def test_combined_concert_only_stays_flat(tmp_path: Path) -> None:
 
     render(layout, tmp_path / "book.pdf", part=["Bass,Piano"])
 
-    out = tmp_path / "book.Bass+Piano.pdf"
+    out = tmp_path / "book.Bass-Piano.pdf"
     with pikepdf.Pdf.open(out) as pdf:
         assert len(pdf.pages) == 3
         titles = outline_titles(pdf)

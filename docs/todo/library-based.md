@@ -146,6 +146,8 @@ structure on top. `file:` layouts keep working unchanged.
   Trombone → Bass Clef; Saxophone (sax, saxophone: a sax of unknown key, so
   `Tenro Sax part` is not taken for the concert chart) → no group. `_` joins
   words (`Bass_Clarinet`, `Alto_Saxophone`).
+  Bass is in Rhythm only, not in Bass Clef: a Bass Clef chart (written for
+  trombones) never stands in for a bass part (author, 2026-10-16).
 - **Dual-instrument scores:** a name that joins two instruments in one
   segment (`Piano:Guitar`, `piano-guitar`, `PianoGuitar`, `pnoguit`) is one
   score both instruments read. The item has both parts, Piano and Guitar. A
@@ -275,7 +277,8 @@ structure on top. `file:` layouts keep working unchanged.
 - **Indexed PDF libraries** are concert-only sources: they answer any part
   request with the indexed pages, as today.
 - **Output:** `--part P` other than Concert writes `<stem>.<P>.pdf`; a
-  combined value writes `<stem>.<A>+<B>.pdf` (`RS` stays `<stem>.RS.pdf`).
+  combined value writes `<stem>.<A>-<B>.pdf` (author, 2026-10-16; `RS`
+  stays `<stem>.RS.pdf`).
   When `-o` already ends in `.<P>` or an alias of `P` (`.rs` for Rhythm),
   it is used as given.
 - **Paths in messages** follow the file-system view (Concepts).
@@ -315,11 +318,6 @@ structure on top. `file:` layouts keep working unchanged.
   - `-vv` / `--verbose 2`: additionally, every candidate (library, file,
     part, variation, free tags) and the name-interpretation rules that
     fired.
-
-## Open questions
-
-- Q16 Groups: confirm Trombone → Bass Clef, and Bass in Rhythm only.
-- Output name for combined values: `<stem>.<A>+<B>.pdf` is a proposal.
 
 ## Facts
 
@@ -862,7 +860,7 @@ macOS 26.6.2. Logs: session scratchpad `acceptance-LIB5/`.
 
 ### LIB6: Every lookup visible and checkable before rendering
 
-Status: executed, pending author verification
+Status: implemented 2026-10-16 (commits LIB6.*)
 
 **Improvement:** `tunery render gig.yaml --test .` shows, without writing a
 PDF, the chart each title would use and every substitution it took.
@@ -976,12 +974,12 @@ Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs: scratchpad
 
 **Author action required at completion:**
 
-- Render the three Crosswinds books and the JBM book, and review them
-  musically.
+- ~~Render the three Crosswinds books and the JBM book, and review them
+  musically~~: passed (author, 2026-10-16).
 
 ### LIB7: SOJ per-instrument books from a title-only setlist
 
-Status: executed, pending author verification
+Status: implemented 2026-10-16 (commits LIB7.*)
 
 **Improvement:** a big-band setlist of titles alone renders the bass or piano
 book. Page ranges come from an index inside the library definition
@@ -1181,11 +1179,11 @@ Logs: scratchpad `acceptance-LIB7/`.
   `GDrive/MasterList/tunery.yaml`; point `GDrive/tunery.yaml` at it~~:
   reviewed by the author, placed at the author's request 2026-10-16.
 - Optional: add index entries for the 10 titles of 26-09-12 that lack one.
-- Review the rendered books musically.
+- ~~Review the rendered books musically~~: passed (author, 2026-10-16).
 
 ### LIB8: Big-band names read by rule: score keys, title initials, shortened titles
 
-Status: executed, pending author verification
+Status: implemented 2026-10-16 (commits LIB8.*)
 
 **Improvement:** the last three big-band naming gaps a real setlist hits
 are closed by rules, not by data workarounds:
@@ -1320,7 +1318,8 @@ Python 3.12.12, ruff 0.17.1, host L25, macOS 26.6.2. Logs:
 
 **Author action required at completion:**
 
-- Review the rendered books musically (LIB6, LIB7 and LIB8 books).
+- ~~Review the rendered books musically (LIB6, LIB7 and LIB8 books)~~:
+  passed (author, 2026-10-16).
 
 ## Backlog
 

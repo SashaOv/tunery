@@ -31,7 +31,7 @@ def test_score_folder_picks_part_without_title_match(
     out = capsys.readouterr().out
     assert '"Si Tu Vois Ma Mare" Alto Sax: si-tu-vois-ma-mere-sidney-bechet-lead-sheet-Alto_Saxophone.pdf' in out
     assert '"Si Tu Vois Ma Mare" Piano: si-tu-vois-ma-mere-sidney-bechet-lead-sheet-C_Major.pdf' in out
-    assert outline_titles(tmp_path / "book.Alto Sax+Piano.pdf") == [
+    assert outline_titles(tmp_path / "book.Alto Sax-Piano.pdf") == [
         ("Si Tu Vois Ma Mare", ["Alto Sax", "Lead Sheet"])
     ]
 

@@ -162,6 +162,13 @@ def test_bass_clarinet_distinct_from_bass() -> None:
     assert "Bass Trombone" not in chain_for_part("Trombone")
 
 
+def test_bass_clef_serves_trombones_not_bass() -> None:
+    assert interpret_remainder("Bass Clef").part == "Bass Clef"
+    assert "Bass Clef" in chain_for_part("Trombone")
+    assert "Bass Clef" in chain_for_part("Bass Trombone")
+    assert "Bass Clef" not in chain_for_part("Bass")
+
+
 def test_paren_instrument_is_variation_not_dual() -> None:
     r = interpret_remainder("(Vocal)-Piano")
     assert r.part == "Piano"

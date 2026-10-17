@@ -96,7 +96,7 @@ def test_rhythm_expands_inside_comma_list(tmp_path: Path) -> None:
 
     render(layout, tmp_path / "book.pdf", part=["Trumpet,Tenor Sax,Rhythm"])
 
-    with pikepdf.Pdf.open(tmp_path / "book.Trumpet+Tenor Sax+Rhythm.pdf") as pdf:
+    with pikepdf.Pdf.open(tmp_path / "book.Trumpet-Tenor Sax-Rhythm.pdf") as pdf:
         assert outline_titles(pdf) == [
             ("Mo Better Blues", ["Trumpet", "Tenor Sax", "Rhythm", "Bass", "Drums"])
         ]

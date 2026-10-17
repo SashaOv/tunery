@@ -84,6 +84,27 @@ def test_cape_verdean_piano_part_is_rhythm(
     assert "Cape Verdean - Concert.pdf" not in out
 
 
+def test_concert_falls_back_to_melody_before_piano_and_vocal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    create_pdfs(
+        tmp_path / "SheetMusic",
+        [
+            "Tune/Tune - Piano.pdf",
+            "Tune/Tune - Melody.pdf",
+            "Tune/Tune - Vocal.pdf",
+        ],
+    )
+    (tmp_path / "tunery.yaml").write_text("- library: SheetMusic\n")
+    layout = write_layout(tmp_path / "show.yaml", [{"title": "Tune"}])
+
+    render(layout, tmp_path / "show.pdf", verbose=1)
+
+    out = capsys.readouterr().out
+    assert '"Tune" Concert: Tune - Melody.pdf' in out
+    assert "Tune: Concert → Melody" in out
+
+
 def test_girl_from_ipanema_takes_voice(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
