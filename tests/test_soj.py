@@ -44,16 +44,16 @@ PART_FILES = {
 JUMBO_PAGES = 60
 
 # (file, page, length) the title-only rendering picks where it differs from
-# the hand book. Sweet Home Chicago's index has no file:, and its jumbo
-# search finds only Sweet Home Chicago-Clark.pdf: the Bb chart is a
-# transposed part no Bass chain reaches. Walking My Baby Back Home's piano
-# is [31, 5] in the converted index, unlike the hand layout's 31-34.
+# the hand book. The hand books take Sweet Home Chicago from Repertoire's
+# renamed copy (`-Clark.pdf`); MasterList has only `Sweet Home Chicago.Bb.pdf`,
+# where `Bb` is the score key, so the index pages land there. Walking My Baby
+# Back Home's piano is [31, 5] in the converted index, unlike the hand
+# layout's 31-34.
+SWEET_HOME = "Sweet Home Chicago.Bb.pdf"
 EXPECTED = {
-    ("bass-26-08-07", "Sweet Home Chicago"): (
-        "Sweet Home Chicago-Clark.pdf",
-        27,
-        2,
-    ),
+    ("bass-26-07-09", "Sweet Home Chicago"): (SWEET_HOME, 27, 2),
+    ("piano-26-07-09", "Sweet Home Chicago"): (SWEET_HOME, 29, 3),
+    ("bass-26-08-07", "Sweet Home Chicago"): (SWEET_HOME, 27, 2),
     ("piano-26-07-09", "Walking My Baby Back Home"): (
         "Walking My Baby Back Home-May.pdf",
         31,

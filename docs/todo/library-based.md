@@ -110,7 +110,7 @@ structure on top. `file:` layouts keep working unchanged.
   |---|---|---|---|
   | Explicit score key | `Concert <key>`, `in <key>`, `<key> major/minor`, `<key>m` | on | on |
   | Instrument | vocabulary below, incl. roles `Horn N`, `Alto Sax 2` | on | on |
-  | Group | `Bb`, `Eb`, `Concert`, `C Instruments`, `… Instr`, `… part`, `Melody` | high | low: after `.` or next to an instrument/kind |
+  | Group | `Bb`, `Eb`, `Concert`, `C Instruments`, `… Instr`, `… part`, `Melody` | high | bare `Bb`/`Eb` is the score key (`Sweet Home Chicago.Bb`; author, 2026-10-16; not yet implemented, see Backlog "Rule profiles") |
   | Kind | `Lead Sheet`, `Score`, `Lyrics`, `Solo`, `Changes`, `Structure`, `Harmony` | on | on |
   | Page split | `Pg N`, `P1`, `_pg 2` | on | on |
   | Noise | `original`, `rescan`, `0`, `org`, `iRealPro`, a leading `Copy of`, track numbers, fillers (`part`, `in`, `with`, `the`, `n`, `and`, `&`) | on | on |
@@ -1103,11 +1103,46 @@ Logs: scratchpad `acceptance-LIB7/`.
   warning. Gate stays green with it. In combo the same file now reads Bass
   Clef instead of Bass; no test pinned the old reading.
 
+**Review 2026-10-16** (oneplan, after the author's comments):
+- The deliverable `MasterList.tunery.yaml` was never handed over (the
+  executor's scratchpad no longer holds it). It's regenerated from the test
+  copy in terse form (`opstuff` `sleek_print.format_yaml`, width 120; one
+  line per entry) and placed in Drive at the author's request:
+  `GDrive/MasterList/tunery.yaml`, with `GDrive/tunery.yaml` now
+  `- library: ./MasterList/tunery.yaml` (was `Repertoire`).
+- Sweet Home Chicago: `.Bb` is its score key (author), but names read it as
+  a Bb part, so the index found no jumbo file. A parser special case was
+  tried and rejected by the author as not general. The index now names the
+  file instead (`file: Sweet Home Chicago.Bb.pdf`); the general rule waits
+  for rule profiles (Backlog).
+- The test data had invented `Sweet Home Chicago-Clark.pdf` in
+  `MasterList`; it exists only in `Repertoire`. It's removed, and
+  `tests/data/soj-masterlist-index.yaml` is rewritten tersely with the same
+  `file:`.
+- Fix uncommitted (`tests/test_soj.py`, `tests/data/soj-masterlist.txt`,
+  `tests/data/soj-masterlist-index.yaml`); no code change. Gate: 184 passed.
+- Live with the real Drive index (each layout's `config:` references
+  `GDrive/MasterList/tunery.yaml`):
+  - 26-07-09 bass: 15/15, 28 pages;
+  - 26-08-07 bass: 21/21, 44 pages;
+
+  both equal the existing books.
+  - 26-07-09 piano: 15/15, 45 pages, as planned;
+  - 26-09-12 bass: 15 found; 9 `missing Bass` and "I'm Gonna Sit Right Down"
+    `not found`.
+- "I'm Gonna Sit Right Down" is a shortened title. The file `I’m Gonna Sit
+  Right Down and Write Myself a Letter.pdf` exists, but a title ending at a
+  space needs an all-tag remainder. That rule keeps `Morning` from claiming
+  `Morning Dance`, so the file is rejected (Backlog: shortened titles).
+- Process: the executor didn't hand over its deliverable or say where it
+  was; it invented a test-data file (against `AGENTS.md`); and it folded an
+  acceptance fix into LIB7.4 instead of leaving it uncommitted.
+
 **Author action required at completion:**
 
-- Review the converted `MasterList.tunery.yaml` and place it as
-  `GDrive/MasterList/tunery.yaml`. Point `GDrive/tunery.yaml` at it
-  (`- library: ./MasterList/tunery.yaml`) instead of `Repertoire`.
+- ~~Review the converted `MasterList.tunery.yaml` and place it as
+  `GDrive/MasterList/tunery.yaml`; point `GDrive/tunery.yaml` at it~~:
+  reviewed by the author, placed at the author's request 2026-10-16.
 - Optional: add index entries for the 10 titles of 26-09-12 that lack one.
 - Review the rendered books musically.
 
@@ -1133,3 +1168,11 @@ Logs: scratchpad `acceptance-LIB7/`.
 - Per-patch interaction tests (new path vs. keys, collections, `file:`,
   mappings, links): postponed to /onereview.
 - Full score: every part of every title in one file.
+- Shortened titles: a title that is the start of exactly one file name in the
+  library, with free words after a space, matches when the title finds
+  nothing else (warned): `I'm Gonna Sit Right Down` → `… and Write Myself a
+  Letter.pdf`.
+- Rule profiles: the per-type rule priorities of the table above, in one
+  place, replacing scattered `library_type` checks. Then a bare `Bb`/`Eb` in
+  a big-band library is the score key, and Sweet Home Chicago's index
+  `file:` can go.
