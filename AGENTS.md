@@ -7,9 +7,8 @@ passes. It lints and runs the tests.
 
 ## Builds
 
-Change specs live in `docs/todo/`; `library-based.md` carries the LIB
-builds. Each patch is one commit whose subject starts with its name
-(`LIB5.2: ...`).
+The behavior spec is `docs/SPEC.md`; change specs live in `docs/todo/`.
+Each patch is one commit whose subject starts with its name (`LIB5.2: ...`).
 
 ## Tests
 

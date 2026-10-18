@@ -1,6 +1,6 @@
 """Interpret library file and folder names into parts and variations.
 
-Rule priorities per library type live in `RULES`. See docs/todo/library-based.md.
+Rule priorities per library type live in `RULES`. See docs/SPEC.md.
 """
 
 from __future__ import annotations
