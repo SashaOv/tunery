@@ -13,7 +13,6 @@ from tunery.render import (
     lookup_and_extract,
     process_file_entry,
     render,
-    resolve_path,
 )
 
 
@@ -697,29 +696,6 @@ def test_render_resolves_relative_file_through_symlinked_parent(
 
     with pikepdf.Pdf.open(output_path) as pdf:
         assert len(pdf.pages) == 1
-
-
-def test_resolve_path_uses_logical_cwd_across_symlinked_parent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """After cd through a symlink, `..` must climb the logical path, not getcwd()."""
-    real_gdrive = tmp_path / "real-gdrive"
-    (real_gdrive / "Shows" / "gig").mkdir(parents=True)
-    project = tmp_path / "project"
-    vault = project / "Vault"
-    vault.mkdir(parents=True)
-    chart = vault / "chart.pdf"
-    chart.write_bytes(b"%PDF")
-    linked_gdrive = project / "GDrive"
-    linked_gdrive.symlink_to(real_gdrive, target_is_directory=True)
-    gig_dir = linked_gdrive / "Shows" / "gig"
-
-    monkeypatch.chdir(gig_dir)
-    monkeypatch.setenv("PWD", str(gig_dir))
-
-    resolved = resolve_path("../../../Vault/chart.pdf", Path("."))
-    assert resolved == chart
-    assert resolved.exists()
 
 
 def test_render_resolves_relative_file_from_symlinked_cwd(

@@ -1,6 +1,5 @@
 import fnmatch
 import json
-import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol
@@ -26,6 +25,7 @@ from tunery.parts import (
     rule_priority,
     stem_candidate,
 )
+from tunery.viewpath import ViewPath
 
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
@@ -77,32 +77,14 @@ class LibraryMatch:
         return self.view or self.source
 
 
-def logical_cwd() -> Path:
-    """Working directory without resolving symlinks.
-
-    After `cd` through a symlink, `os.getcwd()` / `Path.cwd()` return the
-    physical target. POSIX shells keep the logical path in `$PWD`; use that
-    when it still names the current directory.
-    """
-    pwd = os.environ.get("PWD")
-    if pwd:
-        logical = Path(pwd)
-        try:
-            if logical.samefile("."):
-                return logical
-        except OSError:
-            pass
-    return Path.cwd()
+def _view(path: Path) -> ViewPath:
+    """`path` in the file-system view; a `ViewPath` keeps its base."""
+    return path if isinstance(path, ViewPath) else ViewPath(path)
 
 
-def lexical_absolute(path: Path, base: Path | None = None) -> Path:
-    """Absolute path joined to `base` (default: logical working directory),
-    with `.`/`..` collapsed and symlinks kept."""
-    if not path.is_absolute() and base is not None:
-        path = base / path
-    if not path.is_absolute():
-        path = logical_cwd() / path
-    return Path(os.path.normpath(path))
+def _joined(base_dir: Path, name: str) -> ViewPath:
+    """`name` relative to `base_dir` in the file-system view, absolute."""
+    return (_view(base_dir) / name).absolute()
 
 
 @dataclass(frozen=True)
@@ -140,8 +122,8 @@ class DirectoryLibrary:
         index: list[LibraryIndexEntry] | None = None,
     ) -> None:
         # `path` as given is the library's place in the file-system view.
-        self.view_path = lexical_absolute(path)
-        self.path = path.resolve()
+        self.view_path = _view(path).absolute()
+        self.path = self.view_path.resolve()
         self.match = match
         self.library_type = library_type
         self.index = list(index or [])
@@ -182,56 +164,22 @@ class DirectoryLibrary:
         subtrees are skipped; `_.*` folders are transparent (name ignored).
         """
         found: list[tuple[Path, str | None, Path]] = []
-        visited: set[tuple[int, int]] = set()
-        # Stack of (lexical dir path, title-folder chain from root).
-        # Chain holds folder names from library root, transparent names omitted.
-        try:
-            root_stat = self.path.stat()
-            visited.add((root_stat.st_dev, root_stat.st_ino))
-        except OSError:
-            pass
-        stack: list[tuple[Path, list[str]]] = [(self.path, [])]
-        while stack:
-            current, chain = stack.pop()
-            try:
-                with os.scandir(current) as entries:
-                    dirs: list[os.DirEntry[str]] = []
-                    files: list[os.DirEntry[str]] = []
-                    for entry in entries:
-                        try:
-                            if entry.is_dir(follow_symlinks=True):
-                                dirs.append(entry)
-                            elif entry.is_file(follow_symlinks=True):
-                                files.append(entry)
-                        except OSError:
-                            continue
-                    for entry in sorted(files, key=lambda e: e.name):
-                        if entry.name.lower().endswith(".pdf"):
-                            lexical = Path(current) / entry.name
-                            # Innermost title folder = last non-transparent chain element.
-                            folder = chain[-1] if chain else None
-                            found.append(
-                                (lexical.resolve(), folder, lexical.relative_to(self.path))
-                            )
-                    for entry in sorted(dirs, key=lambda e: e.name):
-                        if entry.name == "_archive":
-                            continue
-                        try:
-                            st = entry.stat(follow_symlinks=True)
-                        except OSError:
-                            continue
-                        key = (st.st_dev, st.st_ino)
-                        if key in visited:
-                            continue
-                        visited.add(key)
-                        if self._is_transparent(entry.name):
-                            stack.append((Path(current) / entry.name, chain))
-                        else:
-                            stack.append(
-                                (Path(current) / entry.name, [*chain, entry.name])
-                            )
-            except OSError:
-                continue
+        for folder_path, dirnames, filenames in self.view_path.walk(
+            follow_symlinks=True
+        ):
+            dirnames[:] = [name for name in dirnames if name != "_archive"]
+            titles = [
+                name
+                for name in folder_path.relative_to(self.view_path).parts
+                if not self._is_transparent(name)
+            ]
+            folder = titles[-1] if titles else None
+            for name in filenames:
+                pdf = folder_path / name
+                if name.lower().endswith(".pdf") and pdf.is_file():
+                    found.append(
+                        (pdf.resolve(), folder, pdf.relative_to(self.view_path))
+                    )
         return found
 
     def lookup_title(self, title: str) -> LibraryMatch | None:
@@ -655,8 +603,8 @@ class IndexedPdfLibrary:
         match: MatchMode = "exact",
     ) -> None:
         self.index_path = index_path.resolve()
-        self.source_view = lexical_absolute(source)
-        self.source = source.resolve()
+        self.source_view = _view(source).absolute()
+        self.source = self.source_view.resolve()
         self.match = match
         self._tunes: dict[str, IndexedTune] = {}
         self._title_index = FuzzyIndex[IndexedTune]()
@@ -829,12 +777,12 @@ class LibraryRecord(BaseModel):
     type: LibraryType = "combo"
     index: list[LibraryIndexEntry] | None = None
 
-    def _load_collection(self, path: Path, seen: tuple[Path, ...]) -> Library:
+    def _load_collection(self, path: ViewPath, seen: tuple[ViewPath, ...]) -> Library:
         if "source" in self.model_fields_set:
             raise ValueError(f"Library collection {path} must not specify source")
         if "shift" in self.model_fields_set:
             raise ValueError(f"Library collection {path} must not specify shift")
-        if path in seen:
+        if path.resolve() in {earlier.resolve() for earlier in seen}:
             chain = " -> ".join(str(p) for p in (*seen, path))
             raise ValueError(f"Circular library collection include: {chain}")
         try:
@@ -862,20 +810,15 @@ class LibraryRecord(BaseModel):
             ]
         seen = (*seen, path)
         return LibraryCollection(
-            [record.load(path.parent, seen) for record in records]
+            [record.load(path.relative_base(), seen) for record in records]
         )
 
-    def load(self, base_dir: Path, _seen: tuple[Path, ...] = ()) -> Library:
+    def load(self, base_dir: Path, _seen: tuple[ViewPath, ...] = ()) -> Library:
         """Load the record; relative paths join `base_dir` lexically, so a
         path through a link stays in the file-system view."""
-        path = lexical_absolute(Path(self.library), base_dir)
+        path = _joined(base_dir, self.library)
         if path.suffix.lower() in (".yaml", ".yml") and path.is_file():
-            # A symlinked collection file resolves its paths against its real
-            # location; otherwise they stay in the file-system view, even
-            # through a linked folder.
-            return self._load_collection(
-                path.resolve() if path.is_symlink() else path, _seen
-            )
+            return self._load_collection(path, _seen)
         if path.is_dir():
             if "source" in self.model_fields_set:
                 raise ValueError(
@@ -889,7 +832,7 @@ class LibraryRecord(BaseModel):
         if path.suffix.lower() == ".json" and path.is_file():
             if self.source is None:
                 raise ValueError(f"Indexed PDF library {path} requires source")
-            source = lexical_absolute(Path(self.source), base_dir)
+            source = _joined(base_dir, self.source)
             shift = 0 if self.shift is None else self.shift
             return IndexedPdfLibrary.from_json(
                 path,
@@ -909,8 +852,8 @@ def find_project_config(start_dir: Path) -> Path | None:
     directory holding one wins; holding both is an error. Symlinks are not
     resolved, so the walk climbs back through links into the base hierarchy.
     """
-    directory = lexical_absolute(start_dir)
-    while True:
+    start = _view(start_dir).absolute()
+    for directory in (start, *start.parents):
         plain = directory / PROJECT_CONFIG_NAMES[0]
         dotted = directory / PROJECT_CONFIG_NAMES[1]
         has_plain = plain.is_file()
@@ -924,22 +867,18 @@ def find_project_config(start_dir: Path) -> Path | None:
             return plain
         if has_dotted:
             return dotted
-        if directory.parent == directory:
-            return None
-        directory = directory.parent
+    return None
 
 
 def load_project_libraries(start_dir: Path | None = None) -> LibraryCollection:
     """Libraries of the first project config found walking up from `start_dir`
     (default: logical working directory); without one, `start_dir` itself."""
-    start = lexical_absolute(start_dir or logical_cwd())
+    start = _view(start_dir).absolute() if start_dir is not None else ViewPath.cwd()
     config_path = find_project_config(start)
     if config_path is None:
         print("Project configuration was not found, using defaults")
         return LibraryCollection([DirectoryLibrary(start)])
-    # A symlinked config file resolves its paths against its real location;
-    # otherwise they join its directory in the file-system view.
-    base_dir = config_path.resolve().parent if config_path.is_symlink() else config_path.parent
+    base_dir = config_path.relative_base()
     try:
         raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         records = [LibraryRecord.model_validate(item) for item in (raw_config or [])]

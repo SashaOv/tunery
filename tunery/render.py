@@ -22,11 +22,10 @@ from tunery.library import (
     LibraryRecord,
     PartHit,
     ScoreFolder,
-    lexical_absolute,
     load_project_libraries,
-    logical_cwd,
 )
 from tunery.parts import canonical_part_name, normalize_text, parse_part_name
+from tunery.viewpath import ViewPath
 
 
 class FileEntry(BaseModel):
@@ -153,23 +152,6 @@ def expand_part_specs(
     return specs or [("Concert", ["Concert"])]
 
 
-def resolve_path(path_str: str, base_dir: Path) -> Path:
-    """
-    Resolve a file path relative to base_dir if it's relative, otherwise return as-is.
-
-    Normalizes lexically without dereferencing intermediate symlinks, so `..`
-    climbs above symlinked parents instead of their targets.
-    """
-    path = Path(path_str)
-    return lexical_absolute(path, base_dir)
-
-
-def view_base(base: Path | None) -> Path:
-    """Root of the file-system view: `--base`, else the logical working
-    directory. Relative command-line paths join it."""
-    return lexical_absolute(base) if base is not None else logical_cwd()
-
-
 @dataclass
 class ProcessEntryResult:
     """Base class for processing results."""
@@ -251,7 +233,7 @@ def process_file_entry(
     if not subparts:
         subparts = ["Concert"]
     if entry.file:
-        folder = resolve_path(entry.file, default_dir)
+        folder = ViewPath(default_dir, entry.file).absolute()
         if folder.is_dir():
             return select_and_add(
                 entry.title or folder.name,
@@ -270,7 +252,7 @@ def process_file_entry(
         if library_match is not None:
             input_pdf_path = library_match.source
         else:
-            input_pdf_path = resolve_path(entry.file, default_dir)
+            input_pdf_path = ViewPath(default_dir, entry.file).absolute()
         title = display_title(entry.title, input_pdf_path)
         page = entry.page
         length = entry.length
@@ -506,9 +488,8 @@ def render(
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>-<B>.pdf`.
     """
-    root = view_base(base)
-    layout_path = lexical_absolute(layout_path, root)
-    output = lexical_absolute(output, root)
+    layout_path = ViewPath(layout_path, base=base).absolute()
+    output = ViewPath(output, base=layout_path.base).absolute()
     try:
         with open(str(layout_path), "r") as file:
             file_content = file.read()
@@ -616,7 +597,7 @@ def lookup_and_extract(
         base: Root of the file-system view (`--base`); configuration is
               found from it, and a relative `output` joins it.
     """
-    root = view_base(base)
+    root = ViewPath(base or ".").absolute()
     libraries = load_project_libraries(root)
     library_match = libraries.lookup_title(title)
     if library_match is None:
@@ -624,7 +605,7 @@ def lookup_and_extract(
         return
 
     matched_title = library_match.title
-    output = lexical_absolute(output or Path(), root)
+    output = ViewPath(output or ".", base=root).absolute()
     output_path = output / f"{matched_title}.pdf" if output.is_dir() else output
     location = format_source_location(library_match.shown, library_match.page)
     print(f'Found "{matched_title}" in {location}')
