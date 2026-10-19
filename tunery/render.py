@@ -15,6 +15,7 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+from viewpath import ViewPath
 
 from tunery.composer import Composer
 from tunery.library import (
@@ -26,7 +27,6 @@ from tunery.library import (
     load_project_libraries,
 )
 from tunery.parts import canonical_part_name, normalize_text, parse_part_name
-from tunery.viewpath import ViewPath
 
 
 class FileEntry(BaseModel):

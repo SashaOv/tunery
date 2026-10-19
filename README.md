@@ -127,7 +127,9 @@ Run `tunery --help` for all options.
 ## Developing
 
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
-- Install dependencies with `uv sync`.
+- Install dependencies with `uv sync`. `viewpath` comes from
+  [kitbag](https://github.com/SashaOv/kitbag); to hack on it locally, point
+  its entry in `[tool.uv.sources]` at `{ path = "../kitbag/viewpath", editable = true }`.
 - Run `uv run build.py gate` before committing: it lints with ruff and runs
   the tests.
 - Behavior is specified in `docs/SPEC.md`; changes in progress are planned

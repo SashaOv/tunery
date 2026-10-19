@@ -17,6 +17,7 @@ dependencies = [
     "pymupdf>=1.27.2",
     "pyyaml>=6.0.2",
     "rapidfuzz>=3.0.0",
+    "viewpath",
 ]
 
 [project.scripts]
@@ -34,6 +35,7 @@ default-groups = ["dev"]
 
 [tool.uv.sources]
 pywolf = { path = "../pywolf" }
+viewpath = { git = "https://github.com/SashaOv/kitbag.git", subdirectory = "viewpath" }
 
 [build-system]
 requires = ["hatchling"]

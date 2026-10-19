@@ -7,6 +7,7 @@ from typing import Literal, Protocol
 import yaml
 from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
 from rapidfuzz import fuzz as _fuzz
+from viewpath import ViewPath
 
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.parts import (
@@ -25,7 +26,6 @@ from tunery.parts import (
     rule_priority,
     stem_candidate,
 )
-from tunery.viewpath import ViewPath
 
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
