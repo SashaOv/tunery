@@ -1,5 +1,6 @@
 """PDF rendering logic for combining PDFs with table of contents."""
 
+import csv
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,6 +88,10 @@ class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
     """The complete layout schema - a list of config, sections, and/or file entries."""
 
 
+
+# Column names (ignoring case and surrounding spaces) that hold titles in a .csv
+# input, in order of preference.
+CSV_TITLE_COLUMNS = ("Title",)
 
 RHYTHM_SECTION = ["Piano", "Guitar", "Bass", "Drums"]
 # Part bookmarks under a title, for readers that show only one bookmark level.
@@ -470,6 +475,55 @@ def _filter_titles(
     return kept
 
 
+def read_layout_records(layout_path: Path) -> object:
+    """Layout records of a YAML layout, or of a title list: a .txt file with
+    one title per line, or a .csv file with a title column."""
+    suffix = layout_path.suffix.lower()
+    if suffix in (".txt", ".csv"):
+        titles = _read_titles(layout_path, csv_input=suffix == ".csv")
+        if not titles:
+            raise ValueError(f"No titles in {layout_path}")
+        return [{"title": title} for title in titles]
+    try:
+        with open(str(layout_path), "r") as file:
+            file_content = file.read()
+            return yaml.safe_load(file_content)
+    except yaml.YAMLError as e:
+        # Add file path and line information to YAML parsing errors
+        error_msg = f"YAML parsing error in {layout_path}"
+        # Some YAML errors have problem_mark with line/column info
+        problem_mark = getattr(e, "problem_mark", None)
+        if problem_mark is not None:
+            error_msg += f" at line {problem_mark.line + 1}, column {problem_mark.column + 1}"
+        error_msg += f": {e}"
+        raise ValueError(error_msg) from e
+
+
+def _read_titles(path: Path, *, csv_input: bool) -> list[str]:
+    """Non-empty trimmed titles: one per line, or from the title column."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"Cannot read {path}: it is not UTF-8 text") from e
+    if not csv_input:
+        lines = text.splitlines()
+    else:
+        reader = csv.DictReader(text.splitlines())
+        header = {(name or "").strip().casefold(): name for name in reader.fieldnames or []}
+        column = next(
+            (header[wanted.casefold()] for wanted in CSV_TITLE_COLUMNS if wanted.casefold() in header),
+            None,
+        )
+        if column is None:
+            found = ", ".join(name for name in reader.fieldnames or []) or "none"
+            raise ValueError(
+                f"No title column in {path}: expected {' or '.join(CSV_TITLE_COLUMNS)} "
+                f"(found {found})"
+            )
+        lines = [row[column] or "" for row in reader]
+    return [line.strip() for line in lines if line.strip()]
+
+
 def render(
     layout_path: Path,
     output: Path,
@@ -490,19 +544,7 @@ def render(
     """
     layout_path = ViewPath(layout_path, base=base).absolute()
     output = ViewPath(output, base=layout_path.base).absolute()
-    try:
-        with open(str(layout_path), "r") as file:
-            file_content = file.read()
-            raw_data = yaml.safe_load(file_content)
-    except yaml.YAMLError as e:
-        # Add file path and line information to YAML parsing errors
-        error_msg = f"YAML parsing error in {layout_path}"
-        # Some YAML errors have problem_mark with line/column info
-        problem_mark = getattr(e, "problem_mark", None)
-        if problem_mark is not None:
-            error_msg += f" at line {problem_mark.line + 1}, column {problem_mark.column + 1}"
-        error_msg += f": {e}"
-        raise ValueError(error_msg) from e
+    raw_data = read_layout_records(layout_path)
 
     # Parse and validate the YAML records using Pydantic
     try:

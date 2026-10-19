@@ -192,6 +192,13 @@ Tunery reads this array directly and pairs it with the `source` and optional
 
 A layout is a list containing config, chart, and section records.
 
+A plain title list is also a layout: a `.txt` file with one title per line
+(lines are trimmed, empty ones skipped), or a `.csv` file whose `Title` column
+(`CSV_TITLE_COLUMNS` in `tunery/render.py`; header case and surrounding spaces
+ignored) holds the titles, in order. Each title is a chart. A title list
+without titles, a `.csv` without a title column, or a file that isn't UTF-8 is
+an error naming the file.
+
 A config record adds libraries after the project libraries, and may name
 part selections:
 

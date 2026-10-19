@@ -114,6 +114,14 @@ tunery lookup "Giant Steps"
 - `--base DIR` resolves relative command-line paths against `DIR` instead of
   the working directory.
 
+A plain list of titles works as a layout too: a `.txt` file with one title
+per line, or a `.csv` file with a `Title` column.
+
+```console
+tunery render setlist.txt --part Bass
+tunery render setlist.csv
+```
+
 Run `tunery --help` for all options.
 
 ## Developing
