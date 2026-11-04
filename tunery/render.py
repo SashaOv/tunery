@@ -363,15 +363,12 @@ def select_and_add(
             print(f'  "{title}" {hit.requested}: {hit.match.source.name}')
     if verbose >= 2:
         for lib_desc, path, cand in libraries.all_candidates(title):
-            if cand is None:
-                print(f'  candidate "{title}" in "{lib_desc}" ({path.name}): indexed')
-            else:
-                print(
-                    f'  candidate "{title}" in "{lib_desc}" ({path.name}): '
-                    f"part={cand.part}, key={cand.score_key}, "
-                    f"var={cand.variations}, free={cand.free_tags}, "
-                    f"noise={cand.noise}, rules={cand.rules_fired}"
-                )
+            print(
+                f'  candidate "{title}" in "{lib_desc}" ({path.name}): '
+                f"part={cand.part}, key={cand.score_key}, "
+                f"var={cand.variations}, free={cand.free_tags}, "
+                f"noise={cand.noise}, rules={cand.rules_fired}"
+            )
     if not selection.hits:
         return NotFoundResult(title=title)
     # One chart per file (and page range), in requested-part order.

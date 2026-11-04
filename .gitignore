@@ -10,3 +10,4 @@ __pycache__/
 .vscode/
 # Custom project
 /cache/
+.secrets

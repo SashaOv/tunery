@@ -21,6 +21,17 @@ Add an ordered `tunery.yaml` (or `.tunery.yaml`) file to the project:
   own charts last.
 - `source` is required for indexed PDF libraries; `shift` is optional and
   defaults to `0`. `match` is `exact` (default) or `fuzzy`.
+- `part` names the part an indexed PDF is printed for (`Eb`, `Bb`, `Bass
+  Clef`); it defaults to `Concert`. Alto Sax then reads the Eb book rather
+  than a concert one. Several records may share one index:
+
+  ```yaml
+  - library: Bob.json
+    source: Books/The_New_Bob_Book.pdf
+  - library: Bob.json
+    source: Books/NBB Eb.pdf
+    part: Eb
+  ```
 - Paths are relative to the configuration file.
 
 Tunery finds the configuration by walking up from the layout's folder (from
@@ -100,7 +111,7 @@ tunery lookup "Giant Steps"
 ```
 
 - **Parts:** when a tune has no chart for the requested part, Tunery
-  substitutes: an instrument falls back to its key group (Tenor Sax → Bb),
+  substitutes: an instrument falls back to its instrument group (Tenor Sax → Bb),
   then to the concert chart or lead sheet; Piano, Bass and Drums fall back
   to a Rhythm chart first, and Guitar to the Piano chart.
 - **Rhythm section:** `Rhythm`, `RS` or `Rhythm Section` means

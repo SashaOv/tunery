@@ -12,11 +12,14 @@ from viewpath import ViewPath
 from tunery.fuzzy_index import FuzzyIndex, normalize_key
 from tunery.parts import (
     BIG_BAND_DEFAULT_PART,
+    COMBO_DEFAULT_PART,
     LibraryType,
     TitleCandidate,
+    canonical_part_name,
     chain_for_part,
     fuzzy_title_prefix,
     interpret_filename,
+    is_known_part,
     longer_title_name,
     match_candidate,
     normalize_score_key,
@@ -583,6 +586,30 @@ def _top_source(
     return min(extra, key=lambda folder: (-own[folder], extra[folder], str(folder)))
 
 
+def _select_from_books(
+    books: list["IndexedPdfLibrary"], title: str, parts: list[str]
+) -> TitleSelection | None:
+    """Each part from the book serving it in the fewest substitution steps,
+    the earlier of `books` (higher priority) on a tie. None when no book has
+    the title."""
+    found = [(book, m) for book in books if (m := book.lookup_title(title)) is not None]
+    if not found:
+        return None
+    hits: list[PartHit] = []
+    missing: list[str] = []
+    for part in parts:
+        offers = [
+            (served[0], PartHit(part, served[1], book.part, match))
+            for book, match in found
+            if (served := book.step_for(part)) is not None
+        ]
+        if offers:
+            hits.append(min(offers, key=lambda offer: offer[0])[1])
+        else:
+            missing.append(part)
+    return TitleSelection(hits, missing, [])
+
+
 class IndexedTune(BaseModel):
     title: str
     page: PositiveInt
@@ -601,11 +628,14 @@ class IndexedPdfLibrary:
         *,
         shift: int = 0,
         match: MatchMode = "exact",
+        part: str = COMBO_DEFAULT_PART,
     ) -> None:
         self.index_path = index_path.resolve()
         self.source_view = _view(source).absolute()
         self.source = self.source_view.resolve()
         self.match = match
+        # The part the source is printed for (an Eb book is `Eb`).
+        self.part = part
         self._tunes: dict[str, IndexedTune] = {}
         self._title_index = FuzzyIndex[IndexedTune]()
         self._shift = shift
@@ -627,6 +657,7 @@ class IndexedPdfLibrary:
         *,
         shift: int = 0,
         match: MatchMode = "exact",
+        part: str = COMBO_DEFAULT_PART,
     ) -> "IndexedPdfLibrary":
         resolved_index = index_path.resolve()
         try:
@@ -651,7 +682,40 @@ class IndexedPdfLibrary:
             tunes,
             shift=shift,
             match=match,
+            part=part,
         )
+
+    @property
+    def candidate(self) -> TitleCandidate:
+        """How every chart of this book reads, for -vv."""
+        return TitleCandidate(
+            remainder="", parts=[self.part], part=self.part, rules_fired=["indexed"]
+        )
+
+    def step_for(self, requested: str) -> tuple[int, str] | None:
+        """Substitution steps and chain step at which this book serves
+        `requested`, or None when it cannot.
+
+        A concert book serves every part: at its Concert step, or last when
+        the chain has none (`Vocal`, `Lead Sheet`).
+        """
+        chain = chain_for_part(requested)
+        if self.part in chain:
+            return chain.index(self.part), self.part
+        if self.part == COMBO_DEFAULT_PART:
+            return len(chain), self.part
+        return None
+
+    def select_parts(
+        self,
+        title: str,
+        parts: list[str],
+        score_key: str | None = None,
+        tags: list[str] | None = None,
+        paths: list[str] | None = None,
+    ) -> TitleSelection | None:
+        """This book's chart for each requested part it serves."""
+        return _select_from_books([self], title, parts)
 
     def lookup_title(self, title: str) -> LibraryMatch | None:
         tune = self._tunes.get(normalize_key(title))
@@ -723,27 +787,32 @@ class LibraryCollection:
 
         The first library with a chart on any requested part's chain wins the
         title; parts it lacks are missing, never taken from a lower library,
-        so one title's parts belong to one arrangement. Indexed libraries
-        answer every part with their concert pages. Returns None when no
-        library has the title at all.
+        so one title's parts belong to one arrangement. When that library is
+        a book, the books from it down, nested collections included, compete
+        as one: each part comes from the book serving it in the fewest
+        substitution steps, the higher priority on a tie. Returns None when
+        no library has the title at all.
         """
         found: TitleSelection | None = None
-        for library in reversed(self._libraries):
-            if isinstance(library, (LibraryCollection, DirectoryLibrary)):
+        leaves = list(reversed(self._leaves()))
+        books_tried = False
+        for position, library in enumerate(leaves):
+            if isinstance(library, IndexedPdfLibrary):
+                if books_tried:
+                    continue
+                books_tried = True
+                books = [
+                    book
+                    for book in leaves[position:]
+                    if isinstance(book, IndexedPdfLibrary)
+                ]
+                selection = _select_from_books(books, title, parts)
+            elif isinstance(library, DirectoryLibrary):
                 selection = library.select_parts(
                     title, parts, score_key, tags, paths
                 )
             else:
-                match = library.lookup_title(title)
-                selection = (
-                    TitleSelection(
-                        [PartHit(part, "Concert", "Concert", match) for part in parts],
-                        [],
-                        [],
-                    )
-                    if match is not None
-                    else None
-                )
+                continue
             if selection is None:
                 continue
             if selection.hits:
@@ -751,9 +820,20 @@ class LibraryCollection:
             found = found or selection
         return found
 
-    def all_candidates(self, title: str) -> list[tuple[str, Path, object | None]]:
+    def _leaves(self) -> list[Library]:
+        """Directory and indexed libraries, nested collections flattened,
+        lowest priority first."""
+        out: list[Library] = []
+        for library in self._libraries:
+            if isinstance(library, LibraryCollection):
+                out.extend(library._leaves())
+            else:
+                out.append(library)
+        return out
+
+    def all_candidates(self, title: str) -> list[tuple[str, Path, TitleCandidate]]:
         """All candidates per library for -vv, highest priority first."""
-        out: list[tuple[str, Path, object | None]] = []
+        out: list[tuple[str, Path, TitleCandidate]] = []
         for library in reversed(self._libraries):
             if isinstance(library, LibraryCollection):
                 out.extend(library.all_candidates(title))
@@ -765,7 +845,7 @@ class LibraryCollection:
             else:
                 match = library.lookup_title(title)
                 if match is not None:
-                    out.append(("indexed", match.source, None))
+                    out.append(("indexed", match.source, library.candidate))
         return out
 
 
@@ -776,12 +856,16 @@ class LibraryRecord(BaseModel):
     match: MatchMode = "exact"
     type: LibraryType = "combo"
     index: list[LibraryIndexEntry] | None = None
+    # Indexed PDF libraries: the part the source is printed for.
+    part: str | None = None
+
+    def _reject_book_fields(self, what: str, path: Path) -> None:
+        for name in ("source", "shift", "part"):
+            if name in self.model_fields_set:
+                raise ValueError(f"{what} {path} must not specify {name}")
 
     def _load_collection(self, path: ViewPath, seen: tuple[ViewPath, ...]) -> Library:
-        if "source" in self.model_fields_set:
-            raise ValueError(f"Library collection {path} must not specify source")
-        if "shift" in self.model_fields_set:
-            raise ValueError(f"Library collection {path} must not specify shift")
+        self._reject_book_fields("Library collection", path)
         if path.resolve() in {earlier.resolve() for earlier in seen}:
             chain = " -> ".join(str(p) for p in (*seen, path))
             raise ValueError(f"Circular library collection include: {chain}")
@@ -820,12 +904,7 @@ class LibraryRecord(BaseModel):
         if path.suffix.lower() in (".yaml", ".yml") and path.is_file():
             return self._load_collection(path, _seen)
         if path.is_dir():
-            if "source" in self.model_fields_set:
-                raise ValueError(
-                    f"Directory library {path} must not specify source"
-                )
-            if "shift" in self.model_fields_set:
-                raise ValueError(f"Directory library {path} must not specify shift")
+            self._reject_book_fields("Directory library", path)
             return DirectoryLibrary(
                 path, match=self.match, library_type=self.type, index=self.index
             )
@@ -834,11 +913,18 @@ class LibraryRecord(BaseModel):
                 raise ValueError(f"Indexed PDF library {path} requires source")
             source = _joined(base_dir, self.source)
             shift = 0 if self.shift is None else self.shift
+            part = COMBO_DEFAULT_PART if self.part is None else self.part
+            if not is_known_part(part):
+                raise ValueError(
+                    f'Unknown part "{part.strip()}" for indexed PDF library {path}: '
+                    "not an instrument, instrument group or kind"
+                )
             return IndexedPdfLibrary.from_json(
                 path,
                 source,
                 shift=shift,
                 match=self.match,
+                part=canonical_part_name(part),
             )
         raise ValueError(
             f"Library path must be a directory, JSON file, or YAML file: {path}"

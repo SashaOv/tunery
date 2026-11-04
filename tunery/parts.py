@@ -789,7 +789,7 @@ def _folder_score_key(folder: str | None, library_type: str = "combo") -> str | 
 
 
 def is_known_part(requested: str) -> bool:
-    """Whether a --part value names an instrument (with role), group or kind."""
+    """Whether a --part value names an instrument (with role), instrument group or kind."""
     part = _base_instrument(canonical_part_name(requested))
     return (
         part in _INSTRUMENT_GROUPS
@@ -810,7 +810,7 @@ def parse_part_name(raw: str, title: str | None = None) -> str:
         return canonical_part_name(raw)
     where = f' for "{title}"' if title is not None else ""
     raise ValueError(
-        f'Unknown part "{raw.strip()}"{where}: not an instrument, group or kind, '
+        f'Unknown part "{raw.strip()}"{where}: not an instrument, instrument group or kind, '
         "and not named in the layout config"
     )
 

@@ -35,7 +35,7 @@ What one player reads, in order of specificity:
 - instrument + role (`Alto Sax 2`, `Horn 1`; a role may be played by
   different instruments);
 - instrument (`Piano`, `Tenor Sax`, `Vocal`);
-- group (`Concert`, `Bb`, `Eb`, `Bass Clef`, `Rhythm`);
+- instrument group (`Concert`, `Bb`, `Eb`, `Bass Clef`, `Rhythm`);
 - kind (`Lead Sheet`, `Score`, `Lyrics`, `Solo`, `Changes`).
 
 A **variation** distinguishes two items of the same title and part: score key
@@ -117,6 +117,20 @@ Fields:
   libraries and YAML collections must not specify `source`.
 - **shift** (optional): integer added to every indexed tune page; defaults to
   `0`. Directory libraries and YAML collections must not specify `shift`.
+- **part** (optional, indexed PDF libraries): the part the source PDF is
+  printed for, usually an instrument group (`Eb` for an Eb edition of a
+  book); any part name `--part` accepts, aliases included. Defaults to
+  `Concert`. An unknown name is an error naming the value and the library.
+  Directory libraries and YAML collections must not specify `part`. One
+  index may serve several printings:
+
+  ```yaml
+  - library: Bob.json
+    source: Books/The_New_Bob_Book.pdf
+  - library: Bob.json
+    source: Books/NBB Eb.pdf
+    part: Eb
+  ```
 - **match** (optional): `exact` or `fuzzy`; defaults to `exact`.
 - **type** (optional): `combo` or `big band`; defaults to `combo`.
 - **index** (optional, directory libraries): the part index (below).
@@ -328,7 +342,7 @@ directory as a directory library.
   |---|---|---|---|
   | Explicit score key | `Concert <key>`, `in <key>`, `<key> major/minor`, `<key>m` | 1 | 1 |
   | Instrument | vocabulary below, with roles (`Horn 1`, `Alto Sax 2`) | 1 | 1 |
-  | Group | `Concert`, `C Instruments`, `Melody`, `Rhythm`, `Bass Clef`; bare `Bb`/`Eb` in combo | 2 | 1 |
+  | Instrument group | `Concert`, `C Instruments`, `Melody`, `Rhythm`, `Bass Clef`; bare `Bb`/`Eb` in combo | 2 | 1 |
   | Bare score key | bare `Bb`, `Eb` (`Sweet Home Chicago.Bb`) | 0 | 1 |
   | Conductor | `conductor`, `score`, `condensed score` | 0 | 1 |
   | Kind | `Lead Sheet`, `Score`, `Lyrics`, `Solo`, `Changes`, `Structure`, `Harmony` | 1 | 1 |
@@ -336,13 +350,13 @@ directory as a directory library.
   | Noise | `original`, `rescan`, `org`, `iRealPro`, a leading `Copy of`, track numbers | 1 | 1 |
   | Filler | `part`, `in`, `with`, `the`, `a`, `n`, `and`, `&` (not counted) | 1 | 1 |
   | Version | `v2`, `v3`, …: a variation | 1 | 1 |
-  | Jumbo default | an untagged file is a jumbo; a group file is a combined set | 0 | 1 |
+  | Jumbo default | an untagged file is a jumbo; an instrument-group file is a combined set | 0 | 1 |
   | Title initials | in a title folder, a name starting with the title's initials (three or more letters) is that title: `fmttmbass` → Bass; a number glued to Piano is a page (`fmttmpno1`) | 0 | 1 |
 
-- **Vocabulary** (instrument → group): Soprano Sax, Tenor Sax, Clarinet, Bass
+- **Vocabulary** (instrument → instrument group): Soprano Sax, Tenor Sax, Clarinet, Bass
   Clarinet, Trumpet, Flugelhorn → Bb; Alto Sax, Bari Sax → Eb; Trombone, Bass
   Trombone → Bass Clef; Flute, Vocal → Concert; Piano, Guitar, Bass, Drums,
-  Percussion → Rhythm; Saxophone (unknown key) → no group. Aliases
+  Percussion → Rhythm; Saxophone (unknown key) → no instrument group. Aliases
   (`tenor`, `ts`, `bone`, `pno`, `keys`, `bss`, `voice`, …) live in
   `tunery/parts.py`. Bass is in Rhythm only: a Bass Clef chart never stands
   in for a bass part.
@@ -351,7 +365,7 @@ directory as a directory library.
   instrument (`Bass Clarinet`) or an instrument in parentheses is not a
   dual.
 - **Part of an item:** the rightmost instrument (with role), or both
-  instruments of a dual score; else the group, then the kind, then the
+  instruments of a dual score; else the instrument group, then the kind, then the
   library type's default part. An earlier instrument is a variation
   (`All of Me (Vocal)-Piano` → Piano). A role in parentheses after an
   instrument is the role it plays (`tenor (horn 2)` is Tenor Sax as Horn 2).
@@ -388,7 +402,8 @@ record's `shift` to the starting page. The resulting page must be positive.
 ### Part selection
 
 - **Substitution chains:** a requested part falls back step by step:
-  - Instrument N → Instrument → group → Concert rank → Melody → Vocal.
+  - Instrument N → Instrument → instrument group → Concert rank → Melody →
+    Vocal.
   - Piano, Bass, Drums → Rhythm → Concert rank → Melody → Vocal.
   - Guitar → Piano → Rhythm → Concert rank → Melody → Vocal.
   - Concert → Concert rank → Melody → Piano/Guitar → Vocal.
@@ -397,13 +412,19 @@ record's `shift` to the starting page. The resulting page must be positive.
 - **Rhythm section:** `Rhythm`, `RS` and `Rhythm Section` select
   `Piano,Guitar,Bass,Drums`, also inside a comma list. Each member follows
   its own chain.
-- **Ranks:** an instrument and its key group are one rank (Tenor Sax and Bb;
+- **Ranks:** an instrument and its instrument group are one rank (Tenor Sax and Bb;
   Alto Sax, Bari Sax and Eb; Trombone and Bass Clef). Piano and Guitar are
   one rank.
 - **Library:** the highest-priority library (the latest record) with a
   candidate on any step of any requested part's chain wins the title. All
   parts of a title come from that library; a part it lacks is missing, never filled from
   another library.
+- **Books:** when the winning library is an indexed PDF library, it and every
+  lower-priority indexed PDF library holding the title (nested collections
+  included) compete as one. Each requested part comes from the book that
+  serves it in the fewest substitution steps; a tie goes to the higher
+  priority. Directory libraries never join this pool: an arrangement in a
+  higher-priority folder keeps the title even when a book has a closer part.
 - **Sources:** each folder holding candidates for a title is a source. The
   top source has the most requested parts at their own step, then the fewest
   extra words, then comes first in path order.
@@ -422,8 +443,11 @@ record's `shift` to the starting page. The resulting page must be positive.
 - **Combined parts:** each requested part resolves through its chain. A file
   reached by two parts is included once. A part whose chain finds nothing
   for a found title is reported (`missing <part> for "<title>"`).
-- **Indexed PDF libraries** answer any part request with their indexed
-  pages, as concert sources.
+- **Indexed PDF libraries** answer with their indexed pages. A book serves a
+  requested part whose chain contains the book's `part`, at that step. A
+  concert book serves every request: at the Concert step, or after every
+  step of a chain without one (`Vocal`, `Lead Sheet`). A book for another
+  part serves nothing else: an `Eb` book has no Tenor Sax or Concert chart.
 - An unknown part name in `--part`, a part selection, a chart mapping or a
   part index is an error naming the value (and, for a chart, its title).
 
@@ -483,7 +507,7 @@ one bookmark.
 ## Backlog
 
 - Multi-file page splits concatenated as one part (`P1`/`P2`, `_pg 2`).
-- Group folders (`Bb Parts`) add their part to everything below.
+- Instrument-group folders (`Bb Parts`) add their part to everything below.
 - Sibling-prefix grouping for name texts.
 - Rest of the big-band naming profile: trailing key, big-band instruments
   and codes (`tbn1`, `Saxes`), arranger, arrangement version; two-letter
