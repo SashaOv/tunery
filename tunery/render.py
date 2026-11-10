@@ -221,6 +221,7 @@ def process_file_entry(
     part_prefix: str = "",
     book: str | None = None,
     named: dict[str, str] | None = None,
+    concert_sub: bool = True,
 ) -> ProcessEntryResult:
     """
     Add the requested pages for an entry to the combined PDF.
@@ -250,6 +251,7 @@ def process_file_entry(
                 part_prefix,
                 book,
                 named,
+                concert_sub,
             )
         if folder.suffix.lower() != ".pdf" and not folder.exists():
             raise ValueError(f"Score folder not found: {folder}")
@@ -282,7 +284,16 @@ def process_file_entry(
     if libraries is None:
         return NotFoundResult(title=title)
     return select_and_add(
-        title, entry, libraries, subparts, composer, verbose, part_prefix, book, named
+        title,
+        entry,
+        libraries,
+        subparts,
+        composer,
+        verbose,
+        part_prefix,
+        book,
+        named,
+        concert_sub,
     )
 
 
@@ -322,6 +333,7 @@ def select_and_add(
     part_prefix: str,
     book: str | None = None,
     named: dict[str, str] | None = None,
+    concert_sub: bool = True,
 ) -> ProcessEntryResult:
     """Choose the title's charts for the requested parts and add them: one
     chart flat under the title, several nested under a title bookmark."""
@@ -341,7 +353,7 @@ def select_and_add(
         if not replaced:
             subparts = list(dict.fromkeys(part_map.get(p, p) for p in subparts))
     selection = libraries.select_parts(
-        title, subparts, entry.key, entry.tag, entry.path
+        title, subparts, entry.key, entry.tag, entry.path, concert_sub
     )
     if selection is None:
         return NotFoundResult(title=title)
@@ -412,6 +424,7 @@ def process_items(
     part_prefix: str = "",
     book: str | None = None,
     named: dict[str, str] | None = None,
+    concert_sub: bool = True,
 ) -> None:
     """Process layout items recursively for one setbook."""
     for item in items:
@@ -427,6 +440,7 @@ def process_items(
                 part_prefix,
                 book,
                 named,
+                concert_sub,
             )
             composer.end_section()
         else:
@@ -440,6 +454,7 @@ def process_items(
                 part_prefix,
                 book,
                 named,
+                concert_sub,
             )
             print(result.format())
 
@@ -529,6 +544,7 @@ def render(
     verbose: int = 0,
     explicit_bookmark_hierarchy: bool = False,
     test: list[str] | None = None,
+    concert_sub: bool = True,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -538,6 +554,8 @@ def render(
     Renders one setbook per --part option. `--part`
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>-<B>.pdf`.
+    Without `concert_sub`, a transposing part (Bb, Eb, F) never falls back to
+    a concert chart.
     """
     layout_path = ViewPath(layout_path, base=base).absolute()
     output = ViewPath(output, base=layout_path.base).absolute()
@@ -603,6 +621,7 @@ def render(
                     PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
                     label,
                     named_parts,
+                    concert_sub,
                 )
             continue
         part_output = output_path_for_label(output, label if label != "Concert" else None)
@@ -617,6 +636,7 @@ def render(
                 PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
                 label,
                 named_parts,
+                concert_sub,
             )
             composer.save()
 

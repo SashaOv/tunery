@@ -107,13 +107,20 @@ tunery render gig.yaml                       # concert book: gig.pdf
 tunery render gig.yaml --part "Tenor Sax"    # gig.Tenor Sax.pdf
 tunery render gig.yaml --part norm --part rs # one book per --part
 tunery render gig.yaml --part "Bass,Piano"   # both parts in one book
+tunery render gig.yaml --part Eb -nocs       # Eb charts only, no concert fallback
 tunery lookup "Giant Steps"
 ```
 
 - **Parts:** when a tune has no chart for the requested part, Tunery
   substitutes: an instrument falls back to its instrument group (Tenor Sax → Bb),
   then to the concert chart or lead sheet; Piano, Bass and Drums fall back
-  to a Rhythm chart first, and Guitar to the Piano chart.
+  to a Rhythm chart first, and Guitar to the Piano chart. `C` means
+  `Concert`.
+- **Concert fallback:** `--no-concert-sub` (`-nocs`) keeps Bb, Eb and F
+  parts from taking a concert chart: an Alto Sax request gets an Alto Sax
+  or Eb chart, or is reported missing. Concert-pitch parts (Piano, Bass,
+  Trombone, Flute, Vocal) are unaffected. `--concert-sub` (`-cs`) is the
+  default.
 - **Rhythm section:** `Rhythm`, `RS` or `Rhythm Section` means
   `Piano,Guitar,Bass,Drums`.
 - **Several charts for one tune** are nested under the tune's bookmark,

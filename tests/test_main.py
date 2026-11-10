@@ -17,9 +17,19 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
+        concert_sub: bool = True,
     ):
         calls.append(
-            (layout, output, base, part, verbose, explicit_bookmark_hierarchy, test)
+            (
+                layout,
+                output,
+                base,
+                part,
+                verbose,
+                explicit_bookmark_hierarchy,
+                test,
+                concert_sub,
+            )
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -35,6 +45,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             0,
             False,
             None,
+            True,
         )
     ]
 
@@ -50,9 +61,19 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
+        concert_sub: bool = True,
     ):
         calls.append(
-            (layout, output, base, part, verbose, explicit_bookmark_hierarchy, test)
+            (
+                layout,
+                output,
+                base,
+                part,
+                verbose,
+                explicit_bookmark_hierarchy,
+                test,
+                concert_sub,
+            )
         )
 
     monkeypatch.setattr(cli, "render", render)
@@ -85,6 +106,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             1,
             True,
             None,
+            True,
         )
     ]
 
@@ -134,6 +156,7 @@ def test_render_command_forwards_test_option(monkeypatch) -> None:
         verbose: int = 0,
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
+        concert_sub: bool = True,
     ):
         calls.append(test)
 
@@ -142,3 +165,28 @@ def test_render_command_forwards_test_option(monkeypatch) -> None:
     cli.main(["render", "favorites.yaml", "--test", "A", "--test", "B"])
 
     assert calls == [["A", "B"]]
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        ([], True),
+        (["--concert-sub"], True),
+        (["-cs"], True),
+        (["--no-concert-sub"], False),
+        (["-nocs"], False),
+    ],
+)
+def test_render_command_forwards_concert_sub(
+    monkeypatch, flags: list[str], expected: bool
+) -> None:
+    calls = []
+
+    def render(*args, concert_sub: bool = True, **kwargs):
+        calls.append(concert_sub)
+
+    monkeypatch.setattr(cli, "render", render)
+
+    cli.main(["render", "favorites.yaml", *flags])
+
+    assert calls == [expected]

@@ -66,6 +66,14 @@ def render_command(
             help="Resolve only these titles and print -vv results without writing a PDF. Repeatable; '.' or '' means every title.",
         ),
     ] = None,
+    concert_sub: Annotated[
+        bool,
+        Parameter(
+            ["--concert-sub", "-cs"],
+            negative=["--no-concert-sub", "-nocs"],
+            help="Let transposing parts (Bb, Eb) fall back to concert charts (default yes); --no-concert-sub stops at their own charts.",
+        ),
+    ] = True,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
@@ -78,6 +86,7 @@ def render_command(
         level,
         explicit_bookmark_hierarchy=explicit_bookmark_hierarchy,
         test=test,
+        concert_sub=concert_sub,
     )
 
 

@@ -748,6 +748,9 @@ def parse_filename(stem: str, folder: str | None = None) -> ItemInfo:
 def canonical_part_name(requested: str) -> str:
     """Canonicalize a --part value (case-insensitive, aliases)."""
     norm = normalize_text(requested)
+    if norm == "c":
+        # Only as a requested part: a bare C in a file name is a score key.
+        return COMBO_DEFAULT_PART
     if norm in ("rs", "rhythm section", "rhythm"):
         # RS expansion is LIB4.7; for single-part selection treat as Rhythm.
         return "Rhythm"
@@ -970,8 +973,12 @@ def stem_candidate(
     )
 
 
-def chain_for_part(requested: str) -> list[str]:
-    """Substitution chain for a requested part, earliest first."""
+def chain_for_part(requested: str, concert_sub: bool = True) -> list[str]:
+    """Substitution chain for a requested part, earliest first.
+
+    Without `concert_sub`, a transposing part (instrument group Bb, Eb or F)
+    stops at its own steps instead of falling back to concert charts.
+    """
     part = canonical_part_name(requested)
     if part == "Piano":
         return _chain("Piano", "Rhythm", *_CONCERT_RANK, *_FALLBACK_REST)
@@ -996,30 +1003,35 @@ def chain_for_part(requested: str) -> list[str]:
         if group and group not in steps:
             # Rhythm group already covered? Keep single Rhythm entry.
             steps.append(group)
-        for fallback in [*_CONCERT_RANK, *_FALLBACK_REST]:
-            if fallback not in steps:
-                steps.append(fallback)
+        if concert_sub or group not in TRANSPOSING_GROUPS:
+            _add_concert_fallbacks(steps)
         return steps
     # Group or unknown: direct then Concert fallback.
     steps = [part]
-    for fallback in [*_CONCERT_RANK, *_FALLBACK_REST]:
-        if fallback not in steps:
-            steps.append(fallback)
+    if concert_sub or part not in TRANSPOSING_GROUPS:
+        _add_concert_fallbacks(steps)
     return steps
 
 
+def _add_concert_fallbacks(steps: list[str]) -> None:
+    for fallback in [*_CONCERT_RANK, *_FALLBACK_REST]:
+        if fallback not in steps:
+            steps.append(fallback)
+
+
 KEY_GROUPS = {"Bb", "Eb", "Bass Clef", "F"}
+TRANSPOSING_GROUPS = {"Bb", "Eb", "F"}
 
 
-def rank_chain(requested: str) -> list[list[str]]:
+def rank_chain(requested: str, concert_sub: bool = True) -> list[list[str]]:
     """Substitution chain grouped into ranks, best first.
 
-    A key group (Bb, Eb, Bass Clef, F) shares its instrument's rank: a Bb
+    An instrument group (Bb, Eb, Bass Clef, F) shares its instrument's rank: a Bb
     chart is as good as a Tenor Sax chart. Concert, Lead Sheet and Rhythm
     form one rank, as do Piano and Guitar. Every other step is its own rank.
     """
     ranks: list[list[str]] = []
-    for step in chain_for_part(requested):
+    for step in chain_for_part(requested, concert_sub):
         prev = ranks[-1][-1] if ranks and ranks[-1] else None
         if ranks and (
             step in KEY_GROUPS

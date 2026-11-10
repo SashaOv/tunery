@@ -246,6 +246,7 @@ class DirectoryLibrary:
         score_key: str | None = None,
         tags: list[str] | None = None,
         paths: list[str] | None = None,
+        concert_sub: bool = True,
     ) -> TitleSelection | None:
         """Choose a chart for each requested part of a title.
 
@@ -309,11 +310,11 @@ class DirectoryLibrary:
         missing: list[str] = []
         others: dict[tuple[Path, tuple[Path, ...]], list[str]] = {}
         for part in parts:
-            at_rank = _candidates_at_best_rank(part, cands)
+            at_rank = _candidates_at_best_rank(part, cands, concert_sub)
             if not at_rank:
                 missing.append(part)
                 continue
-            chain = chain_for_part(part)
+            chain = chain_for_part(part, concert_sub)
             at_rank.sort(
                 key=lambda h: (
                     not carries_tags(h[1]),
@@ -551,10 +552,10 @@ def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:
 
 
 def _candidates_at_best_rank(
-    part: str, cands: list[tuple[Path, TitleCandidate]]
+    part: str, cands: list[tuple[Path, TitleCandidate]], concert_sub: bool = True
 ) -> list[tuple[Path, TitleCandidate, str]]:
     """Candidates at the first rank of the part's chain that has any."""
-    for rank in rank_chain(part):
+    for rank in rank_chain(part, concert_sub):
         at_rank = [
             (path, cand, step)
             for path, cand in cands
@@ -587,7 +588,10 @@ def _top_source(
 
 
 def _select_from_books(
-    books: list["IndexedPdfLibrary"], title: str, parts: list[str]
+    books: list["IndexedPdfLibrary"],
+    title: str,
+    parts: list[str],
+    concert_sub: bool = True,
 ) -> TitleSelection | None:
     """Each part from the book serving it in the fewest substitution steps,
     the earlier of `books` (higher priority) on a tie. None when no book has
@@ -601,7 +605,7 @@ def _select_from_books(
         offers = [
             (served[0], PartHit(part, served[1], book.part, match))
             for book, match in found
-            if (served := book.step_for(part)) is not None
+            if (served := book.step_for(part, concert_sub)) is not None
         ]
         if offers:
             hits.append(min(offers, key=lambda offer: offer[0])[1])
@@ -692,17 +696,20 @@ class IndexedPdfLibrary:
             remainder="", parts=[self.part], part=self.part, rules_fired=["indexed"]
         )
 
-    def step_for(self, requested: str) -> tuple[int, str] | None:
+    def step_for(
+        self, requested: str, concert_sub: bool = True
+    ) -> tuple[int, str] | None:
         """Substitution steps and chain step at which this book serves
         `requested`, or None when it cannot.
 
         A concert book serves every part: at its Concert step, or last when
-        the chain has none (`Vocal`, `Lead Sheet`).
+        the chain has none (`Vocal`, `Lead Sheet`); without `concert_sub`
+        only a chain that has the Concert step.
         """
-        chain = chain_for_part(requested)
+        chain = chain_for_part(requested, concert_sub)
         if self.part in chain:
             return chain.index(self.part), self.part
-        if self.part == COMBO_DEFAULT_PART:
+        if self.part == COMBO_DEFAULT_PART and concert_sub:
             return len(chain), self.part
         return None
 
@@ -713,9 +720,10 @@ class IndexedPdfLibrary:
         score_key: str | None = None,
         tags: list[str] | None = None,
         paths: list[str] | None = None,
+        concert_sub: bool = True,
     ) -> TitleSelection | None:
         """This book's chart for each requested part it serves."""
-        return _select_from_books([self], title, parts)
+        return _select_from_books([self], title, parts, concert_sub)
 
     def lookup_title(self, title: str) -> LibraryMatch | None:
         tune = self._tunes.get(normalize_key(title))
@@ -782,6 +790,7 @@ class LibraryCollection:
         score_key: str | None = None,
         tags: list[str] | None = None,
         paths: list[str] | None = None,
+        concert_sub: bool = True,
     ) -> TitleSelection | None:
         """Choose charts for a title's parts, highest-priority library first.
 
@@ -806,10 +815,10 @@ class LibraryCollection:
                     for book in leaves[position:]
                     if isinstance(book, IndexedPdfLibrary)
                 ]
-                selection = _select_from_books(books, title, parts)
+                selection = _select_from_books(books, title, parts, concert_sub)
             elif isinstance(library, DirectoryLibrary):
                 selection = library.select_parts(
-                    title, parts, score_key, tags, paths
+                    title, parts, score_key, tags, paths, concert_sub
                 )
             else:
                 continue

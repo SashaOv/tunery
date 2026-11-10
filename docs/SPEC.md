@@ -68,8 +68,11 @@ score (`conductor`, `score`, `condensed score`) is a part of its own
 
 - **render** `LAYOUT_YAML [-o OUTPUT_PDF]` builds a setbook. The default output
   is `<layout_basename>.pdf` next to the layout.
-  - `--part PART` selects the part (default `Concert`). Each `--part` is its
-    own output; a comma-separated value combines parts in one output.
+  - `--part PART` selects the part (default `Concert`; `C` means `Concert`).
+    Each `--part` is its own output; a comma-separated value combines parts in
+    one output.
+  - `--concert-sub` (`-cs`, default) and `--no-concert-sub` (`-nocs`) let a
+    transposing part fall back to concert charts or not (see Part selection).
   - `--test TITLE` (repeatable) resolves the named titles, prints `-vv`-level
     results and writes no PDF. `.` or `""` means every title. A title not in
     the layout is an error.
@@ -409,6 +412,15 @@ record's `shift` to the starting page. The resulting page must be positive.
   - Concert → Concert rank → Melody → Piano/Guitar → Vocal.
   - The Concert rank is Concert or untagged, then Lead Sheet, then a Rhythm
     chart. A Piano/Guitar dual score matches Piano and Guitar directly.
+- **Concert substitution:** with `--no-concert-sub`, a transposing part (an
+  instrument of group Bb, Eb or F, or the group itself) ends its chain at its
+  own steps (Alto Sax → Eb; Alto Sax 2 → Alto Sax → Eb) and never takes a
+  Concert, Lead Sheet, Rhythm, Melody or Vocal chart. A concert book serves
+  such a part only with `--concert-sub`. Concert-pitch parts (Concert, Lead
+  Sheet, Melody, Piano, Guitar, Bass, Drums, Rhythm, Flute, Vocal, Trombone,
+  Bass Clef, an unkeyed Saxophone) keep their chains either way. Unresolved
+  parts are reported as missing. Whether Bass Clef parts count as transposing
+  is unconfirmed: they read concert pitch, so they are treated as concert.
 - **Rhythm section:** `Rhythm`, `RS` and `Rhythm Section` select
   `Piano,Guitar,Bass,Drums`, also inside a comma list. Each member follows
   its own chain.
