@@ -74,6 +74,14 @@ def render_command(
             help="Let transposing parts (Bb, Eb) fall back to concert charts (default yes); --no-concert-sub stops at their own charts.",
         ),
     ] = True,
+    current: Annotated[
+        bool | None,
+        Parameter(
+            ["--current"],
+            negative=["--no-current"],
+            help="Search the layout's own folder, first (default yes unless `no-current` is configured); --no-current does not.",
+        ),
+    ] = None,
 ) -> None:
     """Render a PDF setbook from a YAML layout file."""
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
@@ -87,6 +95,7 @@ def render_command(
         explicit_bookmark_hierarchy=explicit_bookmark_hierarchy,
         test=test,
         concert_sub=concert_sub,
+        current=current,
     )
 
 

@@ -19,11 +19,13 @@ from viewpath import ViewPath
 
 from tunery.composer import Composer
 from tunery.library import (
+    DirectoryLibrary,
     LibraryCollection,
     LibraryMatch,
     LibraryRecord,
     PartHit,
     ScoreFolder,
+    SettingsRecord,
     load_project_libraries,
 )
 from tunery.parts import canonical_part_name, normalize_text, parse_part_name
@@ -81,7 +83,7 @@ class NamedParts(BaseModel):
 class ConfigEntry(BaseModel):
     """Configuration entry adding libraries and named parts."""
 
-    config: list[LibraryRecord | NamedParts]
+    config: list[LibraryRecord | NamedParts | SettingsRecord]
 
 
 class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
@@ -545,6 +547,7 @@ def render(
     explicit_bookmark_hierarchy: bool = False,
     test: list[str] | None = None,
     concert_sub: bool = True,
+    current: bool | None = None,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -555,7 +558,9 @@ def render(
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>-<B>.pdf`.
     Without `concert_sub`, a transposing part (Bb, Eb, F) never falls back to
-    a concert chart.
+    a concert chart. The layout's own folder is the highest-priority library
+    unless `current` is False (default: the layout or project configuration's
+    `no-current`, else True).
     """
     layout_path = ViewPath(layout_path, base=base).absolute()
     output = ViewPath(output, base=layout_path.base).absolute()
@@ -569,22 +574,29 @@ def render(
         error_msg = f"Validation error in {layout_path}:\n{e}"
         raise ValueError(error_msg) from e
 
-    libraries = load_project_libraries(layout_path.parent)
+    libraries = load_project_libraries(layout_path.parent, default_to_start=False)
     if verbose >= 1:
         print(f"configuration {libraries.config_path or 'not found'}")
 
     layout_base = layout_path.parent
     layout_entries: list[SectionEntry | FileEntry] = []
     named_parts: dict[str, str] = {}
+    no_current = libraries.no_current
     for record in layout.root:
         if isinstance(record, ConfigEntry):
             for config_record in record.config:
                 if isinstance(config_record, NamedParts):
                     named_parts.update(config_record.part)
+                elif isinstance(config_record, SettingsRecord):
+                    no_current = config_record.no_current
                 else:
                     libraries.add(config_record.load(layout_base))
         else:
             layout_entries.append(record)
+    if current is not None:
+        no_current = not current
+    if not no_current:
+        libraries.add(DirectoryLibrary(layout_base, exclude=libraries.directories))
 
     default_dir = layout_path.parent
     part_specs = expand_part_specs(part, named_parts)

@@ -18,6 +18,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
         concert_sub: bool = True,
+        current: bool | None = None,
     ):
         calls.append(
             (
@@ -29,6 +30,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
                 explicit_bookmark_hierarchy,
                 test,
                 concert_sub,
+                current,
             )
         )
 
@@ -46,6 +48,7 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             False,
             None,
             True,
+            None,
         )
     ]
 
@@ -62,6 +65,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
         concert_sub: bool = True,
+        current: bool | None = None,
     ):
         calls.append(
             (
@@ -73,6 +77,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
                 explicit_bookmark_hierarchy,
                 test,
                 concert_sub,
+                current,
             )
         )
 
@@ -107,6 +112,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             True,
             None,
             True,
+            None,
         )
     ]
 
@@ -157,6 +163,7 @@ def test_render_command_forwards_test_option(monkeypatch) -> None:
         explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
         concert_sub: bool = True,
+        current: bool | None = None,
     ):
         calls.append(test)
 
@@ -184,6 +191,25 @@ def test_render_command_forwards_concert_sub(
 
     def render(*args, concert_sub: bool = True, **kwargs):
         calls.append(concert_sub)
+
+    monkeypatch.setattr(cli, "render", render)
+
+    cli.main(["render", "favorites.yaml", *flags])
+
+    assert calls == [expected]
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [([], None), (["--current"], True), (["--no-current"], False)],
+)
+def test_render_command_forwards_current(
+    monkeypatch, flags: list[str], expected: bool | None
+) -> None:
+    calls = []
+
+    def render(*args, current: bool | None = None, **kwargs):
+        calls.append(current)
 
     monkeypatch.setattr(cli, "render", render)
 

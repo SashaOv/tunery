@@ -1,11 +1,19 @@
 import fnmatch
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol
 
 import yaml
-from pydantic import BaseModel, PositiveInt, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    TypeAdapter,
+    ValidationError,
+)
 from rapidfuzz import fuzz as _fuzz
 from viewpath import ViewPath
 
@@ -22,9 +30,9 @@ from tunery.parts import (
     is_known_part,
     longer_title_name,
     match_candidate,
-    normalize_score_key,
     normalize_text,
     parse_part_name,
+    parse_score_key,
     rank_chain,
     rule_priority,
     stem_candidate,
@@ -123,8 +131,12 @@ class DirectoryLibrary:
         match: MatchMode = "exact",
         library_type: LibraryType = "combo",
         index: list[LibraryIndexEntry] | None = None,
+        exclude: Sequence[Path] = (),
     ) -> None:
         # `path` as given is the library's place in the file-system view.
+        # Folders below `exclude` (compared by real path) belong to other
+        # libraries and are not searched.
+        self._exclude = [Path(folder).resolve() for folder in exclude]
         self.view_path = _view(path).absolute()
         self.path = self.view_path.resolve()
         self.match = match
@@ -159,6 +171,10 @@ class DirectoryLibrary:
     def _is_transparent(name: str) -> bool:
         return name.startswith("_") and name != "_archive"
 
+    def _excluded(self, folder: Path) -> bool:
+        real = folder.resolve()
+        return any(real.is_relative_to(other) for other in self._exclude)
+
     def _discover(self) -> list[tuple[Path, str | None, Path]]:
         """Every PDF below the library: resolved path, innermost title folder,
         and path inside the library as reached (symlinks kept).
@@ -167,10 +183,16 @@ class DirectoryLibrary:
         subtrees are skipped; `_.*` folders are transparent (name ignored).
         """
         found: list[tuple[Path, str | None, Path]] = []
+        if self._excluded(self.view_path):
+            return found
         for folder_path, dirnames, filenames in self.view_path.walk(
             follow_symlinks=True
         ):
-            dirnames[:] = [name for name in dirnames if name != "_archive"]
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if name != "_archive" and not self._excluded(folder_path / name)
+            ]
             titles = [
                 name
                 for name in folder_path.relative_to(self.view_path).parts
@@ -273,18 +295,21 @@ class DirectoryLibrary:
             return None if not warnings else TitleSelection([], list(parts), warnings)
         if score_key is not None:
             try:
-                wanted = normalize_score_key(score_key)
+                wanted, wanted_mode = parse_score_key(score_key)
             except ValueError:
-                wanted = score_key
+                wanted, wanted_mode = score_key, None
             keyed = [
                 (p, c)
                 for p, c in cands
-                if c.score_key is not None and c.score_key.lower() == wanted.lower()
+                if c.score_key is not None
+                and c.score_key.lower() == wanted.lower()
+                and _mode_matches(wanted_mode, c.score_mode)
             ]
             if keyed:
                 cands = keyed
             else:
-                warnings.append(f'no {wanted} version of "{title}"')
+                shown = f"{wanted} {wanted_mode}" if wanted_mode else wanted
+                warnings.append(f'no {shown} version of "{title}"')
         wanted_tags = [normalize_text(tag) for tag in tags or []]
 
         def carries_tags(cand: TitleCandidate) -> bool:
@@ -415,6 +440,7 @@ class DirectoryLibrary:
                             parts=[part],
                             part=part,
                             score_key=base.score_key,
+                            score_mode=base.score_mode,
                             variations=list(base.variations),
                             free_tags=list(base.free_tags),
                             rules_fired=[*base.rules_fired, "index entry"],
@@ -539,6 +565,14 @@ def _no_path_candidate(title: str, paths: list[str]) -> str:
     """Warn that no candidate's path matched. Several fragments are or-ed."""
     shown = " or ".join(f'"{path}"' for path in paths)
     return f'no candidate under {shown} for "{title}"'
+
+
+def _mode_matches(wanted: str | None, stated: str | None) -> bool:
+    """A requested mode must be the chart's stated mode; a chart that states
+    none is major. No requested mode matches any chart of the key."""
+    if wanted is None:
+        return True
+    return (stated or "major") == wanted
 
 
 def _matched_step(cand: TitleCandidate, rank: list[str]) -> str | None:
@@ -755,6 +789,8 @@ class LibraryCollection:
         self._libraries = list(libraries or [])
         # Project configuration the collection was loaded from, if any.
         self.config_path = config_path
+        # `no-current` as the project configuration sets it, if it does.
+        self.no_current: bool | None = None
 
     @property
     def directories(self) -> list[Path]:
@@ -856,6 +892,15 @@ class LibraryCollection:
                 if match is not None:
                     out.append(("indexed", match.source, library.candidate))
         return out
+
+
+class SettingsRecord(BaseModel):
+    """A configuration record holding settings rather than a library."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    # Do not search the layout's own folder.
+    no_current: bool = Field(alias="no-current")
 
 
 class LibraryRecord(BaseModel):
@@ -965,18 +1010,31 @@ def find_project_config(start_dir: Path) -> Path | None:
     return None
 
 
-def load_project_libraries(start_dir: Path | None = None) -> LibraryCollection:
+_CONFIG_RECORD = TypeAdapter(LibraryRecord | SettingsRecord)
+
+
+def load_project_libraries(
+    start_dir: Path | None = None, *, default_to_start: bool = True
+) -> LibraryCollection:
     """Libraries of the first project config found walking up from `start_dir`
-    (default: logical working directory); without one, `start_dir` itself."""
+    (default: logical working directory). Without one, `start_dir` itself is
+    the library, unless `default_to_start` is off."""
     start = _view(start_dir).absolute() if start_dir is not None else ViewPath.cwd()
     config_path = find_project_config(start)
     if config_path is None:
         print("Project configuration was not found, using defaults")
-        return LibraryCollection([DirectoryLibrary(start)])
+        return LibraryCollection([DirectoryLibrary(start)] if default_to_start else [])
     base_dir = config_path.relative_base()
     try:
         raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        records = [LibraryRecord.model_validate(item) for item in (raw_config or [])]
+        records = [_CONFIG_RECORD.validate_python(item) for item in (raw_config or [])]
     except (OSError, yaml.YAMLError, ValidationError, TypeError) as error:
         raise ValueError(f"Invalid project configuration {config_path}: {error}") from error
-    return LibraryCollection([record.load(base_dir) for record in records], config_path)
+    collection = LibraryCollection(
+        [r.load(base_dir) for r in records if isinstance(r, LibraryRecord)],
+        config_path,
+    )
+    for record in records:
+        if isinstance(record, SettingsRecord):
+            collection.no_current = record.no_current
+    return collection

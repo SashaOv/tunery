@@ -38,7 +38,10 @@ Tunery finds the configuration by walking up from the layout's folder (from
 the working directory for `lookup`). A folder that is a symlink, such as a
 link into Google Drive, is treated as part of the tree it is linked from:
 walking up from `GDrive/Shows/gig` reaches the folder holding `GDrive`.
-Without a configuration, the layout's folder is the library.
+The layout's own folder is always searched too, first: a chart beside the
+layout beats the libraries. Without a configuration it is the only library.
+Add `- no-current: true` to the configuration (or the layout's `config:`), or
+pass `--no-current`, to leave the folder out.
 
 A `library` may also point to a YAML collection file holding more library
 records, with paths relative to that file. A `match` set on the reference is
@@ -69,7 +72,9 @@ A folder library is searched recursively, following symlinks:
 
 What follows the title names the part (`Bass`, `Tenor Sax`, `Bb`, `Rhythm`,
 `Lead Sheet`, `Piano:Guitar`) and its variations: score key (`Concert F`,
-`(in F)`), version (`v2`), and anything else.
+`(in F)`, `(C)`, `[Dm]`), version (`v2`), and anything else. A note name in
+round or square brackets is a score key, even `(Eb)`; unbracketed `Eb`
+(`Cherokee.Eb.pdf`, `Cherokee - Eb.pdf`) is the Eb instrument group.
 
 ## Render a setbook
 
@@ -98,7 +103,7 @@ Create a layout such as `gig.yaml`:
 - Layout libraries are resolved relative to the layout and take priority
   over project libraries. A `part:` item names part selections.
 - On a chart, `part:` (or `parts:`) says which part this tune uses for a
-  requested one, `key:` picks a score key, and `tag:` (or `tags:`) prefers
+  requested one, `key:` picks a score key (`F`, `Bb`, `Gm`, `F# min`, `Eb maj`), and `tag:` (or `tags:`) prefers
   charts carrying a tag. `file:` names a PDF, or a folder whose PDFs are
   this tune's charts.
 

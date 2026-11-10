@@ -71,6 +71,8 @@ score (`conductor`, `score`, `condensed score`) is a part of its own
   - `--part PART` selects the part (default `Concert`; `C` means `Concert`).
     Each `--part` is its own output; a comma-separated value combines parts in
     one output.
+  - `--current` (default) and `--no-current` search the layout's own folder
+    or not (see Lookup precedence).
   - `--concert-sub` (`-cs`, default) and `--no-concert-sub` (`-nocs`) let a
     transposing part fall back to concert charts or not (see Part selection).
   - `--test TITLE` (repeatable) resolves the named titles, prints `-vv`-level
@@ -266,8 +268,12 @@ Chart fields:
   title uses for them. A key that is a part applies in every book; a key that
   names a layout part selection replaces the title's parts in that book only.
   Which instrument reads `Horn 1` is decided only here.
-- **key** (optional): score key; keeps only candidates in that key (a key
-  without a mode matches any mode).
+- **key** (optional): score key `X[[ ]m|mi|min|minor|ma|maj|major]`, a note
+  name (`C`, `Bb`, `F#`) with an optional mode (`Gm`, `G min`, `Bb maj`);
+  keeps only candidates in that key. A key without a mode matches any mode.
+  `m`, `mi`, `min` and `minor` are minor; `ma`, `maj` and `major` are major,
+  which a chart that states no mode also is. An unrecognized value matches
+  nothing and is warned like a missing key.
 - **tag** / **tags** (optional): one or several variation or free tags to
   prefer.
 - **path** / **paths** (optional): one or several fragments of the path
@@ -344,6 +350,7 @@ directory as a directory library.
   | Rule | Matches | Combo | Big band |
   |---|---|---|---|
   | Explicit score key | `Concert <key>`, `in <key>`, `<key> major/minor`, `<key>m` | 1 | 1 |
+  | Bracketed score key | a note name with optional mode alone in round or square brackets: `(C)`, `[Dm]`, `(Gm)`, `[F# min]`, `(Eb)`; an explicit score key in the same name wins | 1 | 1 |
   | Instrument | vocabulary below, with roles (`Horn 1`, `Alto Sax 2`) | 1 | 1 |
   | Instrument group | `Concert`, `C Instruments`, `Melody`, `Rhythm`, `Bass Clef`; bare `Bb`/`Eb` in combo | 2 | 1 |
   | Bare score key | bare `Bb`, `Eb` (`Sweet Home Chicago.Bb`) | 0 | 1 |
@@ -381,8 +388,25 @@ directory as a directory library.
 
 ### Lookup precedence and matching
 
-Load project libraries first, followed by layout libraries in record order.
-Search from last to first, so later libraries have higher priority.
+Load project libraries first, followed by layout libraries in record order,
+then the layout's own folder (below). Search from last to first, so later
+libraries have higher priority.
+
+The **layout's folder** is a directory library, searched recursively with the
+default `exact` matching, and the highest-priority one, whether or not a
+project configuration exists. It skips folders that another loaded directory
+library already covers (compared by real path), so a layout above its Vault
+does not search the Vault twice. The setting `no-current` turns it off:
+`--no-current` on the command line, or a `no-current: true` record in the
+project configuration or the layout's `config:` list. The command line wins
+over the layout, the layout over the project configuration; `--current` turns
+a configured `no-current` back off. With no library left, every title is not
+found.
+
+```yaml
+- library: Vault
+- no-current: true
+```
 
 For `title:` entries and the `lookup` command:
 

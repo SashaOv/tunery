@@ -230,6 +230,47 @@ def normalize_score_key(key: str) -> str:
     )
 
 
+_MODES = {
+    "m": "minor", "mi": "minor", "min": "minor", "minor": "minor",
+    "ma": "major", "maj": "major", "major": "major",
+}
+_KEY_SPEC = re.compile(r"(.*?)\s*(minor|major|min|maj|mi|ma|m)?", re.IGNORECASE)
+
+
+def parse_score_key(spec: str) -> tuple[str, str | None]:
+    """Split a score key `X[[ ]m|mi|min|minor|ma|maj|major]` into its canonical
+    note and mode (`minor`, `major` or None when unstated): `Gm`, `G min`,
+    `Bb maj`, `F#`."""
+    match = _KEY_SPEC.fullmatch(spec.strip())
+    note, mode = match.groups() if match else (spec, None)
+    try:
+        return normalize_score_key(note), _MODES[mode.lower()] if mode else None
+    except ValueError:
+        raise ValueError(
+            f"Invalid key {spec!r}. Use a note name like Bb, F# or Gb, "
+            "optionally followed by m, min, ma or maj (Gm, F# min, Bb maj)."
+        ) from None
+
+
+_BRACKETED = re.compile(r"[(\[]\s*([^()\[\]]*?)\s*[)\]]")
+
+
+def _take_bracketed_key(tag_text: str) -> tuple[str, tuple[str, str | None] | None]:
+    """Tag text without its bracketed score keys `(C)`, `[Dm]`, `(Eb)`, and the
+    last such key. Unbracketed Bb and Eb are instrument groups, not keys."""
+    found: list[tuple[str, str | None]] = []
+
+    def take(match: re.Match[str]) -> str:
+        try:
+            found.append(parse_score_key(match.group(1)))
+        except ValueError:
+            return match.group(0)
+        return " "
+
+    text = _BRACKETED.sub(take, tag_text)
+    return text, (found[-1] if found else None)
+
+
 @dataclass
 class InterpretedTags:
     parts: list[str]
@@ -326,6 +367,7 @@ def interpret_remainder(
     In a big-band library a conductor score is a part of its own, and an
     untagged remainder defaults to the full score instead of Concert.
     """
+    tag_text, bracketed_key = _take_bracketed_key(tag_text)
     tokens = _tokenize_tag_text(tag_text)
     n = len(tokens)
     consumed = [False] * n
@@ -605,6 +647,10 @@ def interpret_remainder(
     elif groups_found or kinds_found:
         variations_out = []
 
+    if score_key is None and bracketed_key is not None:
+        score_key, score_mode = bracketed_key
+        rules_fired.append(f"bracketed score key: {score_key}")
+
     return InterpretedTags(
         parts=parts,
         part=part,
@@ -784,11 +830,15 @@ def _base_instrument(part: str) -> str:
     return part
 
 
-def _folder_score_key(folder: str | None, library_type: str = "combo") -> str | None:
-    """Score key named by a title folder (`- Concert F`, `(in F)`, `- Bb`)."""
+def _folder_score_key(
+    folder: str | None, library_type: str = "combo"
+) -> tuple[str | None, str | None]:
+    """Score key and mode named by a title folder (`- Concert F`, `(in F)`,
+    `- Bb`, `[Dm]`)."""
     if not folder:
-        return None
-    return interpret_remainder(folder, library_type=library_type).score_key
+        return None, None
+    interp = interpret_remainder(folder, library_type=library_type)
+    return interp.score_key, interp.score_mode
 
 
 def is_known_part(requested: str) -> bool:
@@ -824,6 +874,8 @@ class TitleCandidate:
     parts: list[str]
     part: str
     score_key: str | None = None
+    # `minor` or `major` when the name states it.
+    score_mode: str | None = None
     variations: list[str] = field(default_factory=list)
     free_tags: list[str] = field(default_factory=list)
     rules_fired: list[str] = field(default_factory=list)
@@ -874,12 +926,17 @@ def match_candidate(
             stem_remainder, allow_dual=not has_parens, library_type=library_type
         )
         if not (interp.free_tags and not is_hard):
-            score_key = interp.score_key or _folder_score_key(folder, library_type)
+            score_key, score_mode = (
+                (interp.score_key, interp.score_mode)
+                if interp.score_key
+                else _folder_score_key(folder, library_type)
+            )
             return TitleCandidate(
                 remainder=stem_remainder,
                 parts=interp.parts,
                 part=interp.part,
                 score_key=score_key,
+                score_mode=score_mode,
                 variations=interp.variations,
                 free_tags=interp.free_tags,
                 rules_fired=interp.rules_fired,
@@ -901,7 +958,10 @@ def match_candidate(
             if folder_interp.free_tags and not folder_hard:
                 return None
             return stem_candidate(
-                stem, folder, folder_interp.score_key, library_type
+                stem,
+                folder,
+                (folder_interp.score_key, folder_interp.score_mode),
+                library_type,
             )
     return None
 
@@ -945,7 +1005,7 @@ def _piano_page(interp: InterpretedTags) -> InterpretedTags:
 def stem_candidate(
     stem: str,
     folder: str | None = None,
-    folder_key: str | None = None,
+    folder_key: tuple[str | None, str | None] = (None, None),
     library_type: str = "combo",
 ) -> TitleCandidate:
     """A file whose title is known from its folder: the whole stem is read
@@ -960,11 +1020,19 @@ def stem_candidate(
     if initials is not None:
         interp = _piano_page(interp)
         interp = replace(interp, rules_fired=["title initials", *interp.rules_fired])
+    score_key, score_mode = (
+        (interp.score_key, interp.score_mode)
+        if interp.score_key
+        else folder_key
+        if folder_key[0]
+        else _folder_score_key(folder, library_type)
+    )
     return TitleCandidate(
         remainder=clean_stem(stem),
         parts=interp.parts,
         part=interp.part,
-        score_key=interp.score_key or folder_key or _folder_score_key(folder, library_type),
+        score_key=score_key,
+        score_mode=score_mode,
         variations=interp.variations,
         free_tags=[],
         rules_fired=interp.rules_fired,
