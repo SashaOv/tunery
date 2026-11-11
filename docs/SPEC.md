@@ -68,19 +68,16 @@ score (`conductor`, `score`, `condensed score`) is a part of its own
 
 - **render** `LAYOUT_YAML [-o OUTPUT_PDF]` builds a setbook. The default output
   is `<layout_basename>.pdf` next to the layout.
-  - `--part PART` selects the part (default `Concert`; `C` means `Concert`).
+  - `--part PART` (`-p`) selects the part (default `Concert`; `C` means `Concert`).
     Each `--part` is its own output; a comma-separated value combines parts in
     one output.
-  - `--current` (default) and `--no-current` search the layout's own folder
-    or not (see Lookup precedence).
-  - `--concert-sub` (`-cs`, default) and `--no-concert-sub` (`-nocs`) let a
-    transposing part fall back to concert charts or not (see Part selection).
+  - Each setting (see Settings) has a flag `--KEY` and its negation
+    `--no-KEY`, overriding the configured value: `--concert-sub` also
+    reads `-cs`, `--no-concert-sub` also `-nocs`.
   - `--test TITLE` (repeatable) resolves the named titles, prints `-vv`-level
     results and writes no PDF. `.` or `""` means every title. A title not in
     the layout is an error.
   - `-v`/`--verbose 1` and `-vv`/`--verbose 2` add detail (see Messages).
-  - `--explicit-bookmark-hierarchy` prefixes part bookmarks with `_ ` (`_
-    Bass`), for readers that show one bookmark level.
 - **lookup** `TITLE... [-o OUTPUT]` extracts requested titles. If `OUTPUT` is a
   directory, Tunery writes `<canonical_title>.pdf` inside it. If it is a file,
   Tunery uses it as-is. The default is
@@ -103,7 +100,8 @@ score (`conductor`, `score`, `condensed score`) is a part of its own
 ### Project configuration
 
 The project configuration file is named `tunery.yaml` or `.tunery.yaml`. It
-contains an ordered list of library records:
+contains an ordered list of library records and settings records (see
+Settings); a single record may stand alone, without the list:
 
 ```yaml
 - library: indexes/real-book.json
@@ -219,7 +217,8 @@ without titles, a `.csv` without a title column, or a file that isn't UTF-8 is
 an error naming the file.
 
 A config record adds libraries after the project libraries, and may name
-part selections:
+part selections and change settings (see Settings). Its `config:` is a list
+of records, or a single record without the list:
 
 ```yaml
 - config:
@@ -231,6 +230,7 @@ part selections:
     - part:
         full: Concert, Trumpet, Tenor Sax, Rhythm
         norm: Tenor Sax
+    - concert-sub: false
 ```
 
 Resolve layout `library` and `source` paths relative to the layout file. A
@@ -295,6 +295,32 @@ A section creates a nested PDF outline:
 ```
 
 Sections can nest to any depth and may be empty.
+
+### Settings
+
+A settings record holds one or several settings, each a boolean:
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `concert-sub` | `true` | Transposing parts may fall back to concert charts (see Part selection). |
+| `current-dir` | `true` | Search the layout's own folder, first (see Lookup precedence). |
+| `explicit-bookmark-hierarchy` | `false` | Prefix part bookmarks with `_ ` (`_ Bass`), for readers that show one bookmark level. |
+
+The key is the `render` flag without `--`, and its value is what the flag
+sets: `concert-sub: false` is `--no-concert-sub`. Settings apply in order,
+each changing only the keys it states: defaults, the project configuration,
+the layout's `config:`, then the command line; within a file, later records
+win.
+
+```yaml
+- config:
+    concert-sub: false
+    current-dir: false
+```
+
+A record is one kind: a library, a part selection or settings. A key that
+belongs to none of them, or a record mixing kinds, is an error naming the
+file and the key; so is a setting that is not a boolean.
 
 ## Behavior
 
@@ -396,16 +422,13 @@ The **layout's folder** is a directory library, searched recursively with the
 default `exact` matching, and the highest-priority one, whether or not a
 project configuration exists. It skips folders that another loaded directory
 library already covers (compared by real path), so a layout above its Vault
-does not search the Vault twice. The setting `no-current` turns it off:
-`--no-current` on the command line, or a `no-current: true` record in the
-project configuration or the layout's `config:` list. The command line wins
-over the layout, the layout over the project configuration; `--current` turns
-a configured `no-current` back off. With no library left, every title is not
+does not search the Vault twice. The setting `current-dir: false` (or
+`--no-current-dir`) leaves it out. With no library left, every title is not
 found.
 
 ```yaml
 - library: Vault
-- no-current: true
+- current-dir: false
 ```
 
 For `title:` entries and the `lookup` command:
@@ -536,6 +559,9 @@ one bookmark.
   library or YAML collection.
 - Raise visible errors for both `tunery.yaml` and `.tunery.yaml` in one
   directory, unknown part names, and a `--test` title not in the layout.
+- Raise visible errors, naming the file and the key, for unknown keys in
+  library records, part selections and settings records, records mixing
+  them, and settings that are not booleans.
 - Include the layout path and available line/column information in YAML parsing
   errors.
 - Include the layout path in schema validation errors.

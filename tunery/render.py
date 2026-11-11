@@ -9,6 +9,7 @@ import yaml
 from pydantic import (
     AliasChoices,
     BaseModel,
+    ConfigDict,
     Field,
     PositiveInt,
     RootModel,
@@ -25,10 +26,11 @@ from tunery.library import (
     LibraryRecord,
     PartHit,
     ScoreFolder,
-    SettingsRecord,
+    config_records,
     load_project_libraries,
 )
 from tunery.parts import canonical_part_name, normalize_text, parse_part_name
+from tunery.settings import Settings
 
 
 class FileEntry(BaseModel):
@@ -77,13 +79,20 @@ class SectionEntry(BaseModel):
 class NamedParts(BaseModel):
     """Named part selections in a layout config (`part:` or `parts:`)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     part: dict[str, str] = Field(validation_alias=AliasChoices("part", "parts"))
 
 
 class ConfigEntry(BaseModel):
-    """Configuration entry adding libraries and named parts."""
+    """Configuration entry adding libraries, named parts and settings."""
 
-    config: list[LibraryRecord | NamedParts | SettingsRecord]
+    config: list[LibraryRecord | NamedParts | Settings]
+
+    @field_validator("config", mode="before")
+    @classmethod
+    def _single_record(cls, value: object) -> object:
+        return config_records(value)
 
 
 class Layout(RootModel[list[ConfigEntry | SectionEntry | FileEntry]]):
@@ -544,10 +553,8 @@ def render(
     base: Path | None = None,
     part: str | list[str] | None = None,
     verbose: int = 0,
-    explicit_bookmark_hierarchy: bool = False,
     test: list[str] | None = None,
-    concert_sub: bool = True,
-    current: bool | None = None,
+    settings: Settings | None = None,
 ) -> None:
     """Combine PDFs according to the YAML layout file.
 
@@ -557,10 +564,10 @@ def render(
     Renders one setbook per --part option. `--part`
     selects instrument parts with substitution chains; other than Concert it
     writes `<stem>.<Part>.pdf`, combined values `<stem>.<A>-<B>.pdf`.
-    Without `concert_sub`, a transposing part (Bb, Eb, F) never falls back to
-    a concert chart. The layout's own folder is the highest-priority library
-    unless `current` is False (default: the layout or project configuration's
-    `no-current`, else True).
+    `settings` are the command line's: they override the layout's `config:`,
+    which overrides the project configuration. Without `concert_sub`, a
+    transposing part (Bb, Eb, F) never falls back to a concert chart; with
+    `current_dir`, the layout's own folder is the highest-priority library.
     """
     layout_path = ViewPath(layout_path, base=base).absolute()
     output = ViewPath(output, base=layout_path.base).absolute()
@@ -581,21 +588,22 @@ def render(
     layout_base = layout_path.parent
     layout_entries: list[SectionEntry | FileEntry] = []
     named_parts: dict[str, str] = {}
-    no_current = libraries.no_current
+    layout_settings: list[Settings] = []
     for record in layout.root:
         if isinstance(record, ConfigEntry):
             for config_record in record.config:
                 if isinstance(config_record, NamedParts):
                     named_parts.update(config_record.part)
-                elif isinstance(config_record, SettingsRecord):
-                    no_current = config_record.no_current
+                elif isinstance(config_record, Settings):
+                    layout_settings.append(config_record)
                 else:
                     libraries.add(config_record.load(layout_base))
         else:
             layout_entries.append(record)
-    if current is not None:
-        no_current = not current
-    if not no_current:
+    settings = Settings().layered(
+        [*libraries.settings, *layout_settings, *([settings] if settings else [])]
+    )
+    if settings.current_dir:
         libraries.add(DirectoryLibrary(layout_base, exclude=libraries.directories))
 
     default_dir = layout_path.parent
@@ -616,6 +624,7 @@ def render(
         if wanted is not None:
             layout_entries = _filter_titles(layout_entries, wanted)
 
+    bookmark_prefix = PART_BOOKMARK_PREFIX if settings.explicit_bookmark_hierarchy else ""
     for label, subparts in part_specs:
         if test is not None:
             # Dry run: -vv results to a scratch PDF that is deleted.
@@ -630,10 +639,10 @@ def render(
                     libraries,
                     subparts,
                     2,
-                    PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
+                    bookmark_prefix,
                     label,
                     named_parts,
-                    concert_sub,
+                    settings.concert_sub,
                 )
             continue
         part_output = output_path_for_label(output, label if label != "Concert" else None)
@@ -645,10 +654,10 @@ def render(
                 libraries,
                 subparts,
                 verbose,
-                PART_BOOKMARK_PREFIX if explicit_bookmark_hierarchy else "",
+                bookmark_prefix,
                 label,
                 named_parts,
-                concert_sub,
+                settings.concert_sub,
             )
             composer.save()
 

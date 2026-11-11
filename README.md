@@ -40,8 +40,8 @@ link into Google Drive, is treated as part of the tree it is linked from:
 walking up from `GDrive/Shows/gig` reaches the folder holding `GDrive`.
 The layout's own folder is always searched too, first: a chart beside the
 layout beats the libraries. Without a configuration it is the only library.
-Add `- no-current: true` to the configuration (or the layout's `config:`), or
-pass `--no-current`, to leave the folder out.
+Add `- current-dir: false` to the configuration (or the layout's `config:`),
+or pass `--no-current-dir`, to leave the folder out.
 
 A `library` may also point to a YAML collection file holding more library
 records, with paths relative to that file. A `match` set on the reference is
@@ -102,6 +102,19 @@ Create a layout such as `gig.yaml`:
 
 - Layout libraries are resolved relative to the layout and take priority
   over project libraries. A `part:` item names part selections.
+- Settings may go in the layout's `config:` or in `tunery.yaml`; the key is
+  the `render` flag without `--`, so `concert-sub: false` means
+  `--no-concert-sub`. The command line beats the layout, which beats the
+  project. A `config:` with a single record needs no list:
+
+  ```yaml
+  - config:
+      concert-sub: false
+      explicit-bookmark-hierarchy: true
+  ```
+
+  Settings: `concert-sub` (default `true`), `current-dir` (default `true`),
+  `explicit-bookmark-hierarchy` (default `false`).
 - On a chart, `part:` (or `parts:`) says which part this tune uses for a
   requested one, `key:` picks a score key (`F`, `Bb`, `Gm`, `F# min`, `Eb maj`), and `tag:` (or `tags:`) prefers
   charts carrying a tag. `file:` names a PDF, or a folder whose PDFs are
@@ -112,7 +125,7 @@ tunery render gig.yaml                       # concert book: gig.pdf
 tunery render gig.yaml --part "Tenor Sax"    # gig.Tenor Sax.pdf
 tunery render gig.yaml --part norm --part rs # one book per --part
 tunery render gig.yaml --part "Bass,Piano"   # both parts in one book
-tunery render gig.yaml --part Eb -nocs       # Eb charts only, no concert fallback
+tunery render gig.yaml -p Eb -nocs           # Eb charts only, no concert fallback
 tunery lookup "Giant Steps"
 ```
 

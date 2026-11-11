@@ -9,7 +9,6 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
-    Field,
     PositiveInt,
     TypeAdapter,
     ValidationError,
@@ -37,6 +36,7 @@ from tunery.parts import (
     rule_priority,
     stem_candidate,
 )
+from tunery.settings import Settings
 
 MatchMode = Literal["exact", "fuzzy"]
 PROJECT_CONFIG_NAME = "tunery.yaml"
@@ -789,8 +789,8 @@ class LibraryCollection:
         self._libraries = list(libraries or [])
         # Project configuration the collection was loaded from, if any.
         self.config_path = config_path
-        # `no-current` as the project configuration sets it, if it does.
-        self.no_current: bool | None = None
+        # Settings records of the project configuration, in file order.
+        self.settings: list[Settings] = []
 
     @property
     def directories(self) -> list[Path]:
@@ -894,16 +894,9 @@ class LibraryCollection:
         return out
 
 
-class SettingsRecord(BaseModel):
-    """A configuration record holding settings rather than a library."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    # Do not search the layout's own folder.
-    no_current: bool = Field(alias="no-current")
-
-
 class LibraryRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     library: str
     source: str | None = None
     shift: int | None = None
@@ -1010,7 +1003,14 @@ def find_project_config(start_dir: Path) -> Path | None:
     return None
 
 
-_CONFIG_RECORD = TypeAdapter(LibraryRecord | SettingsRecord)
+_CONFIG_RECORD = TypeAdapter(LibraryRecord | Settings)
+
+
+def config_records(raw: object) -> object:
+    """Records of a configuration list; a single record may stand alone."""
+    if raw is None:
+        return []
+    return [raw] if isinstance(raw, dict) else raw
 
 
 def load_project_libraries(
@@ -1027,14 +1027,14 @@ def load_project_libraries(
     base_dir = config_path.relative_base()
     try:
         raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        records = [_CONFIG_RECORD.validate_python(item) for item in (raw_config or [])]
+        records = [
+            _CONFIG_RECORD.validate_python(item) for item in config_records(raw_config)
+        ]
     except (OSError, yaml.YAMLError, ValidationError, TypeError) as error:
         raise ValueError(f"Invalid project configuration {config_path}: {error}") from error
     collection = LibraryCollection(
         [r.load(base_dir) for r in records if isinstance(r, LibraryRecord)],
         config_path,
     )
-    for record in records:
-        if isinstance(record, SettingsRecord):
-            collection.no_current = record.no_current
+    collection.settings = [r for r in records if isinstance(r, Settings)]
     return collection

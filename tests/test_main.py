@@ -4,6 +4,7 @@ import pytest
 
 import tunery.render
 from tunery import main as cli
+from tunery.settings import Settings
 
 
 def test_render_command_uses_default_output(monkeypatch) -> None:
@@ -15,10 +16,8 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
-        explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
-        concert_sub: bool = True,
-        current: bool | None = None,
+        settings: Settings | None = None,
     ):
         calls.append(
             (
@@ -27,10 +26,8 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
                 base,
                 part,
                 verbose,
-                explicit_bookmark_hierarchy,
                 test,
-                concert_sub,
-                current,
+                settings,
             )
         )
 
@@ -45,10 +42,8 @@ def test_render_command_uses_default_output(monkeypatch) -> None:
             None,
             None,
             0,
-            False,
             None,
-            True,
-            None,
+            Settings(),
         )
     ]
 
@@ -62,10 +57,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
-        explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
-        concert_sub: bool = True,
-        current: bool | None = None,
+        settings: Settings | None = None,
     ):
         calls.append(
             (
@@ -74,10 +67,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
                 base,
                 part,
                 verbose,
-                explicit_bookmark_hierarchy,
                 test,
-                concert_sub,
-                current,
+                settings,
             )
         )
 
@@ -93,7 +84,7 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             "proj",
             "--part",
             "Piano",
-            "--part",
+            "-p",
             "Bass,Piano",
             "-v",
             "--verbose",
@@ -109,10 +100,8 @@ def test_render_command_accepts_options(monkeypatch) -> None:
             Path("proj"),
             ["Piano", "Bass,Piano"],
             1,
-            True,
             None,
-            True,
-            None,
+            Settings(explicit_bookmark_hierarchy=True),
         )
     ]
 
@@ -160,10 +149,8 @@ def test_render_command_forwards_test_option(monkeypatch) -> None:
         base: Path | None = None,
         part: list[str] | None = None,
         verbose: int = 0,
-        explicit_bookmark_hierarchy: bool = False,
         test: list[str] | None = None,
-        concert_sub: bool = True,
-        current: bool | None = None,
+        settings: Settings | None = None,
     ):
         calls.append(test)
 
@@ -177,20 +164,29 @@ def test_render_command_forwards_test_option(monkeypatch) -> None:
 @pytest.mark.parametrize(
     ("flags", "expected"),
     [
-        ([], True),
-        (["--concert-sub"], True),
-        (["-cs"], True),
-        (["--no-concert-sub"], False),
-        (["-nocs"], False),
+        ([], {}),
+        (["--concert-sub"], {"concert_sub": True}),
+        (["-cs"], {"concert_sub": True}),
+        (["--no-concert-sub"], {"concert_sub": False}),
+        (["-nocs"], {"concert_sub": False}),
+        (["--current-dir"], {"current_dir": True}),
+        (["--no-current-dir"], {"current_dir": False}),
+        (["--explicit-bookmark-hierarchy"], {"explicit_bookmark_hierarchy": True}),
+        (["--no-explicit-bookmark-hierarchy"], {"explicit_bookmark_hierarchy": False}),
+        (
+            ["-nocs", "--no-current-dir"],
+            {"concert_sub": False, "current_dir": False},
+        ),
     ],
 )
-def test_render_command_forwards_concert_sub(
-    monkeypatch, flags: list[str], expected: bool
+def test_render_command_forwards_only_given_settings(
+    monkeypatch, flags: list[str], expected: dict[str, bool]
 ) -> None:
     calls = []
 
-    def render(*args, concert_sub: bool = True, **kwargs):
-        calls.append(concert_sub)
+    def render(*args, settings: Settings | None = None, **kwargs):
+        assert settings is not None
+        calls.append(settings.model_dump(exclude_unset=True))
 
     monkeypatch.setattr(cli, "render", render)
 
@@ -199,20 +195,7 @@ def test_render_command_forwards_concert_sub(
     assert calls == [expected]
 
 
-@pytest.mark.parametrize(
-    ("flags", "expected"),
-    [([], None), (["--current"], True), (["--no-current"], False)],
-)
-def test_render_command_forwards_current(
-    monkeypatch, flags: list[str], expected: bool | None
-) -> None:
-    calls = []
-
-    def render(*args, current: bool | None = None, **kwargs):
-        calls.append(current)
-
-    monkeypatch.setattr(cli, "render", render)
-
-    cli.main(["render", "favorites.yaml", *flags])
-
-    assert calls == [expected]
+@pytest.mark.parametrize("flag", ["--current", "--no-current"])
+def test_render_command_rejects_removed_current_option(flag: str) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["render", "favorites.yaml", flag])

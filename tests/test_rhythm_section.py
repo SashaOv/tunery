@@ -4,6 +4,7 @@ import pikepdf
 import yaml
 
 from tunery.render import render
+from tunery.settings import Settings
 
 
 def create_pdf(path: Path, page_count: int = 1) -> Path:
@@ -106,7 +107,12 @@ def test_explicit_bookmark_hierarchy_prefixes_parts(tmp_path: Path) -> None:
     make_rs_fixture(tmp_path)
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Mo Better Blues"}, {"title": "Ballad"}])
 
-    render(layout, tmp_path / "book.pdf", part=["RS"], explicit_bookmark_hierarchy=True)
+    render(
+        layout,
+        tmp_path / "book.pdf",
+        part=["RS"],
+        settings=Settings(explicit_bookmark_hierarchy=True),
+    )
 
     with pikepdf.Pdf.open(tmp_path / "book.RS.pdf") as pdf:
         assert outline_titles(pdf) == [

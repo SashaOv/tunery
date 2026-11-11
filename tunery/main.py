@@ -8,8 +8,12 @@ from cyclopts import App, Parameter
 
 import tunery.render as render_module
 from tunery.render import render
+from tunery.settings import Settings
 
 app = App(help="Tunery: Build PDF setbooks from sheet music collections")
+
+# No settings given on the command line.
+_NO_SETTINGS = Settings()
 
 
 @app.command(name="render")
@@ -32,7 +36,7 @@ def render_command(
     part: Annotated[
         list[str] | None,
         Parameter(
-            ["--part"],
+            ["--part", "-p"],
             help="Requested part(s) with substitution chains. Repeat for multiple outputs; comma combines in one file.",
         ),
     ] = None,
@@ -51,14 +55,6 @@ def render_command(
             help="Increase verbosity (-v level 1, -vv level 2).",
         ),
     ] = 0,
-    explicit_bookmark_hierarchy: Annotated[
-        bool,
-        Parameter(
-            ["--explicit-bookmark-hierarchy"],
-            negative=(),
-            help='Prefix part bookmarks with "_ " for readers that show one bookmark level.',
-        ),
-    ] = False,
     test: Annotated[
         list[str] | None,
         Parameter(
@@ -66,24 +62,13 @@ def render_command(
             help="Resolve only these titles and print -vv results without writing a PDF. Repeatable; '.' or '' means every title.",
         ),
     ] = None,
-    concert_sub: Annotated[
-        bool,
-        Parameter(
-            ["--concert-sub", "-cs"],
-            negative=["--no-concert-sub", "-nocs"],
-            help="Let transposing parts (Bb, Eb) fall back to concert charts (default yes); --no-concert-sub stops at their own charts.",
-        ),
-    ] = True,
-    current: Annotated[
-        bool | None,
-        Parameter(
-            ["--current"],
-            negative=["--no-current"],
-            help="Search the layout's own folder, first (default yes unless `no-current` is configured); --no-current does not.",
-        ),
-    ] = None,
+    settings: Annotated[Settings, Parameter(name="*")] = _NO_SETTINGS,
 ) -> None:
-    """Render a PDF setbook from a YAML layout file."""
+    """Render a PDF setbook from a YAML layout file.
+
+    Settings flags override the same keys in the layout's `config:` and the
+    project configuration.
+    """
     output_path = output if output else layout.with_name(f"{layout.stem}.pdf")
     level = max(verbose, v)
     render(
@@ -92,10 +77,8 @@ def render_command(
         base,
         part or None,
         level,
-        explicit_bookmark_hierarchy=explicit_bookmark_hierarchy,
         test=test,
-        concert_sub=concert_sub,
-        current=current,
+        settings=settings,
     )
 
 

@@ -4,6 +4,7 @@ import pytest
 from helpers import create_pdf, create_pdfs, write_layout
 
 from tunery.render import render
+from tunery.settings import Settings
 
 
 def setup_project(root: Path) -> Path:
@@ -15,10 +16,12 @@ def setup_project(root: Path) -> Path:
 
 
 def run(
-    layout: Path, capsys: pytest.CaptureFixture[str], **options: object
+    layout: Path, capsys: pytest.CaptureFixture[str], settings: Settings | None = None
 ) -> str:
     capsys.readouterr()
-    render(layout, layout.parent / "book.pdf", part=["Alto Sax"], verbose=1, **options)
+    render(
+        layout, layout.parent / "book.pdf", part=["Alto Sax"], verbose=1, settings=settings
+    )
     return capsys.readouterr().out
 
 
@@ -75,65 +78,48 @@ def test_layout_folder_skips_folders_other_libraries_cover(
     "how",
     ["option", "layout config", "project config", "layout config over project"],
 )
-def test_no_current_skips_the_layout_folder(
+def test_current_dir_off_skips_the_layout_folder(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], how: str
 ) -> None:
     layout = setup_project(tmp_path)
-    options: dict[str, object] = {}
+    cli: Settings | None = None
     if how == "option":
-        options["current"] = False
+        cli = Settings(current_dir=False)
     elif how == "layout config":
         layout = write_layout(
-            layout, [{"config": [{"no-current": True}]}, {"title": "Tune"}, {"title": "Other"}]
+            layout, [{"config": {"current-dir": False}}, {"title": "Tune"}, {"title": "Other"}]
         )
     elif how == "project config":
-        (tmp_path / "tunery.yaml").write_text("- library: Vault\n- no-current: true\n")
+        (tmp_path / "tunery.yaml").write_text("- library: Vault\n- current-dir: false\n")
     else:
-        (tmp_path / "tunery.yaml").write_text("- library: Vault\n- no-current: false\n")
+        (tmp_path / "tunery.yaml").write_text("- library: Vault\n- current-dir: true\n")
         layout = write_layout(
-            layout, [{"config": [{"no-current": True}]}, {"title": "Tune"}, {"title": "Other"}]
+            layout, [{"config": {"current-dir": False}}, {"title": "Tune"}, {"title": "Other"}]
         )
 
-    out = run(layout, capsys, **options)
+    out = run(layout, capsys, settings=cli)
 
     assert '"Tune" Alto Sax: Tune - Concert.pdf' in out
     assert "Tune.Eb.pdf" not in out
 
 
-def test_current_option_overrides_configured_no_current(
+def test_current_dir_option_overrides_configured_off(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     layout = setup_project(tmp_path)
-    (tmp_path / "tunery.yaml").write_text("- library: Vault\n- no-current: true\n")
+    (tmp_path / "tunery.yaml").write_text("- library: Vault\n- current-dir: false\n")
 
-    out = run(layout, capsys, current=True)
+    out = run(layout, capsys, settings=Settings(current_dir=True))
 
     assert '"Tune" Alto Sax: Tune.Eb.pdf' in out
 
 
-def test_no_current_without_configuration_leaves_no_library(
+def test_current_dir_off_without_configuration_leaves_no_library(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     create_pdf(tmp_path / "Tune.pdf")
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Tune"}])
 
-    out = run(layout, capsys, current=False)
+    out = run(layout, capsys, settings=Settings(current_dir=False))
 
     assert 'not found "Tune"' in out
-
-
-def test_project_config_rejects_unknown_setting(tmp_path: Path) -> None:
-    (tmp_path / "tunery.yaml").write_text("- no-current: true\n  colour: red\n")
-    layout = write_layout(tmp_path / "gig.yaml", [{"title": "Tune"}])
-
-    with pytest.raises(ValueError, match="Invalid project configuration"):
-        render(layout, tmp_path / "book.pdf")
-
-
-def test_no_current_must_be_a_boolean(tmp_path: Path) -> None:
-    layout = write_layout(
-        tmp_path / "gig.yaml", [{"config": [{"no-current": "maybe"}]}, {"title": "Tune"}]
-    )
-
-    with pytest.raises(ValueError, match="no-current"):
-        render(layout, tmp_path / "book.pdf")

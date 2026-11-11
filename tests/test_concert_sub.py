@@ -6,6 +6,7 @@ from helpers import create_pdf, create_pdfs, outline_titles, write_layout
 from tunery.library import LibraryRecord
 from tunery.parts import chain_for_part, parse_part_name
 from tunery.render import render
+from tunery.settings import Settings
 
 
 @pytest.mark.parametrize("name", ["C", "c", " C "])
@@ -67,7 +68,13 @@ def render_part(
 ) -> tuple[str, Path]:
     layout = write_layout(root / "gig.yaml", [{"title": title}])
     capsys.readouterr()
-    render(layout, root / "book.pdf", part=[part], verbose=1, concert_sub=concert_sub)
+    render(
+        layout,
+        root / "book.pdf",
+        part=[part],
+        verbose=1,
+        settings=Settings(concert_sub=concert_sub),
+    )
     label = "-".join(p.strip() for p in part.split(","))
     return capsys.readouterr().out, root / f"book.{label}.pdf"
 
@@ -125,7 +132,7 @@ def test_combined_parts_substitute_only_concert_instruments(
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Blue Bossa"}])
     capsys.readouterr()
 
-    render(layout, tmp_path / "book.pdf", part=["Alto Sax,Piano,C"], verbose=1, concert_sub=False)
+    render(layout, tmp_path / "book.pdf", part=["Alto Sax,Piano,C"], verbose=1, settings=Settings(concert_sub=False))
 
     out = capsys.readouterr().out
     assert 'missing Alto Sax for "Blue Bossa"' in out
@@ -139,7 +146,7 @@ def test_concert_part_requested_as_c(
     configure(tmp_path, ["Blue Bossa/Blue Bossa - Concert.pdf"])
     layout = write_layout(tmp_path / "gig.yaml", [{"title": "Blue Bossa"}])
 
-    render(layout, tmp_path / "book.pdf", part=["C"], concert_sub=False)
+    render(layout, tmp_path / "book.pdf", part=["C"], settings=Settings(concert_sub=False))
 
     assert (tmp_path / "book.pdf").exists()
 
@@ -154,7 +161,7 @@ def test_mapped_part_follows_the_flag(
     )
     capsys.readouterr()
 
-    render(layout, tmp_path / "book.pdf", part=["Alto Sax"], verbose=1, concert_sub=False)
+    render(layout, tmp_path / "book.pdf", part=["Alto Sax"], verbose=1, settings=Settings(concert_sub=False))
 
     assert 'missing Tenor Sax for "Blue Bossa"' in capsys.readouterr().out
 
